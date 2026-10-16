@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Files — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header page-header-sub">
+  <div class="breadcrumb">
+    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">← {{ record.project_name }}</a>
+  </div>
+  <h1>All Files</h1>
+  <p class="page-sub">{{ result.modules|length }} Python modules found</p>
+</div>
+
+<div class="card">
+  <div class="table-toolbar">
+    <input type="text" id="module-search" class="input input-sm" placeholder="Filter by path or module…" />
+  </div>
+  <table class="table" id="modules-table">
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th>Module</th>
+        <th>Layer</th>
+        <th class="text-right">Lines</th>
+        <th class="text-right">Classes</th>
+        <th class="text-right">Functions</th>
+        <th class="text-right">Complexity</th>
+        <th class="text-right">Imports</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in result.modules | sort(attribute='path') %}
+      <tr class="module-row" data-search="{{ m.path }} {{ m.module_name }}">
+        <td class="mono text-sm">
+          <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=m.path) }}" class="link-primary">
+            {{ m.path }}
+          </a>
+        </td>
+        <td class="mono text-sm text-muted">{{ m.module_name }}</td>
+        <td><span class="layer-tag layer-{{ m.layer }}">{{ m.layer }}</span></td>
+        <td class="text-right">{{ m.lines }}</td>
+        <td class="text-right">{{ m.classes | length }}</td>
+        <td class="text-right">{{ m.functions | length }}</td>
+        <td class="text-right">
+          <span class="complexity-badge complexity-{{ 'high' if m.complexity >= 20 else 'med' if m.complexity >= 8 else 'low' }}">
+            {{ m.complexity }}
+          </span>
+        </td>
+        <td class="text-right">{{ m.imports | length }}</td>
+        <td>
+          {% if m.parse_error %}
+            <span class="badge badge-error" title="{{ m.parse_error }}">error</span>
+          {% else %}
+            <span class="badge badge-ok">ok</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('module-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.module-row').forEach(row => {
+      row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}

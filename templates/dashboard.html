@@ -1,0 +1,503 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+{% set summary = result.summary %}
+
+<div class="analysis-header">
+  <div class="analysis-title-row">
+    <div>
+      <h1>{{ record.project_name }}</h1>
+      <span class="text-muted text-sm">Analyzed {{ record.created_at }} &mdash; {{ result.elapsed }}s</span>
+    </div>
+    <div class="header-actions">
+      <a href="{{ url_for('architecture', analysis_id=record.id) }}" class="btn btn-secondary">Architecture Graph</a>
+      <a href="{{ url_for('modules', analysis_id=record.id) }}" class="btn btn-secondary">All Files</a>
+      <a href="{{ url_for('report', analysis_id=record.id) }}" class="btn btn-secondary" target="_blank">↓ Export Report</a>
+    </div>
+  </div>
+  {% if result.scan_warnings %}
+  <div class="warnings-bar">
+    <span class="warning-icon">⚠</span>
+    {{ result.scan_warnings | length }} scan warning(s):
+    <details><summary>Show</summary>
+      <ul class="warning-list">{% for w in result.scan_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    </details>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Stat cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ summary.total_files }}</div>
+    <div class="stat-label">Files</div>
+  </div>
+  <div class="stat-card {% if summary.error_files > 0 %}stat-warn{% endif %}">
+    <div class="stat-value">{{ summary.parsed_files }}</div>
+    <div class="stat-label">Parsed OK
+      {% if summary.error_files > 0 %}<span class="badge badge-error">{{ summary.error_files }} err</span>{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ "{:,}".format(summary.total_lines) }}</div>
+    <div class="stat-label">Total Lines</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ "{:,}".format(summary.get('total_code_lines', 0)) }}</div>
+    <div class="stat-label">Code Lines</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ summary.total_classes }}</div>
+    <div class="stat-label">Classes</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ summary.total_functions }}</div>
+    <div class="stat-label">Functions</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ summary.get('total_methods', 0) }}</div>
+    <div class="stat-label">Methods</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ summary.get('total_imports', 0) }}</div>
+    <div class="stat-label">Imports</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ summary.get('external_library_count', 0) }}</div>
+    <div class="stat-label">Ext. Libraries</div>
+  </div>
+  <div class="stat-card {% if summary.avg_complexity > 5 %}stat-warn{% endif %}">
+    <div class="stat-value">{{ summary.avg_complexity }}</div>
+    <div class="stat-label">Avg Complexity</div>
+  </div>
+</div>
+
+<!-- Section tab navigation -->
+<div class="section-tab-nav">
+  <button class="section-tab-btn active" data-section="overview">Overview</button>
+  <button class="section-tab-btn" data-section="classes">
+    Classes <span class="tab-count">{{ summary.total_classes }}</span>
+  </button>
+  <button class="section-tab-btn" data-section="functions">
+    Functions <span class="tab-count">{{ summary.total_functions + summary.get('total_methods', 0) }}</span>
+  </button>
+  <button class="section-tab-btn" data-section="dependencies">Dependencies</button>
+  <button class="section-tab-btn" data-section="metrics">Metrics</button>
+  <button class="section-tab-btn" data-section="issues">
+    Issues
+    {% set errors = result.issues | selectattr('level','equalto','error') | list %}
+    {% if errors %}<span class="tab-count tab-count-error">{{ errors|length }}</span>{% endif %}
+  </button>
+</div>
+
+<!-- ============================================================ -->
+<!-- OVERVIEW -->
+<!-- ============================================================ -->
+<div id="section-overview" class="section-content">
+  <div class="dashboard-grid">
+
+    <!-- Issues summary -->
+    <div class="card">
+      <h2 class="card-title">Issues Overview</h2>
+      {% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
+      {% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
+      {% set infos    = result.issues | selectattr('level','equalto','info')    | list %}
+      <div class="issue-summary-row">
+        <div class="issue-count issue-error"><span class="ic-num">{{ errors|length }}</span><span class="ic-label">Errors</span></div>
+        <div class="issue-count issue-warning"><span class="ic-num">{{ warnings|length }}</span><span class="ic-label">Warnings</span></div>
+        <div class="issue-count issue-info"><span class="ic-num">{{ infos|length }}</span><span class="ic-label">Info</span></div>
+      </div>
+      {% if result.issues %}
+        <ul class="issue-list-preview">
+          {% for issue in result.issues[:5] %}
+          <li class="issue-item issue-{{ issue.level }}">
+            <span class="issue-badge badge badge-{{ issue.level }}">{{ issue.level }}</span>
+            <span class="issue-title">{{ issue.title }}</span>
+            {% if issue.location %}<code class="issue-loc">{{ issue.location }}</code>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <button class="link-more btn-link" onclick="switchSection('issues')">View all {{ result.issues|length }} issues →</button>
+      {% else %}
+        <p class="empty-state">No issues detected. 🎉</p>
+      {% endif %}
+    </div>
+
+    <!-- Top complex modules -->
+    <div class="card">
+      <h2 class="card-title">Complexity Hotspots</h2>
+      <table class="table">
+        <thead><tr><th>Module</th><th>Lines</th><th>Complexity</th><th>Fns</th></tr></thead>
+        <tbody>
+          {% for row in result.module_metrics[:8] %}
+          <tr>
+            <td><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary mono text-sm">{{ row.path }}</a></td>
+            <td class="text-right">{{ row.lines }}</td>
+            <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.complexity >= 20 else 'med' if row.complexity >= 8 else 'low' }}">{{ row.complexity }}</span></td>
+            <td class="text-right">{{ row.functions + row.methods }}</td>
+          </tr>
+          {% else %}<tr><td colspan="4" class="empty-state">No data</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Architectural Layers -->
+    <div class="card">
+      <h2 class="card-title">Architectural Layers</h2>
+      {% set layer_counts = {} %}
+      {% for m in result.modules %}{% set _ = layer_counts.update({m.layer: (layer_counts.get(m.layer, 0) + 1)}) %}{% endfor %}
+      <div class="layer-chart">
+        {% for layer, count in layer_counts.items() | sort(attribute='1', reverse=true) %}
+        {% set pct = (count / result.modules|length * 100) | round(1) %}
+        <div class="layer-row">
+          <span class="layer-name layer-{{ layer }}">{{ layer }}</span>
+          <div class="layer-bar-wrap"><div class="layer-bar" style="width: {{ pct }}%"></div></div>
+          <span class="layer-count">{{ count }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- External libraries -->
+    <div class="card">
+      <h2 class="card-title">External Libraries</h2>
+      {% if result.external_libraries %}
+      <table class="table">
+        <thead><tr><th>Library</th><th class="text-right">Used by</th></tr></thead>
+        <tbody>
+          {% for lib in result.external_libraries[:12] %}
+          <tr>
+            <td class="mono text-sm">{{ lib.name }}</td>
+            <td class="text-right text-muted">{{ lib.usage_count }} module{{ 's' if lib.usage_count != 1 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="empty-state">No external libraries detected.</p>
+      {% endif %}
+    </div>
+
+    <!-- Most imported modules -->
+    <div class="card">
+      <h2 class="card-title">Most Imported Modules</h2>
+      <table class="table">
+        <thead><tr><th>Module</th><th class="text-right">Imported by</th><th class="text-right">Imports</th></tr></thead>
+        <tbody>
+          {% for row in result.module_metrics | sort(attribute='in_degree', reverse=true) | list %}
+          {% if loop.index <= 8 %}
+          <tr>
+            <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.module.split('.')[-1] }}</a></td>
+            <td class="text-right">{{ row.in_degree }}</td>
+            <td class="text-right">{{ row.out_degree }}</td>
+          </tr>
+          {% endif %}
+          {% else %}<tr><td colspan="3" class="empty-state">No dependency data</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- LOC breakdown -->
+    <div class="card">
+      <h2 class="card-title">Lines of Code Breakdown</h2>
+      {% set total_l = summary.total_lines %}
+      {% if total_l > 0 %}
+      {% set code_pct    = (summary.get('total_code_lines',0)    / total_l * 100) | round(1) %}
+      {% set comment_pct = (summary.get('total_comment_lines',0) / total_l * 100) | round(1) %}
+      {% set blank_pct   = (summary.get('total_blank_lines',0)   / total_l * 100) | round(1) %}
+      <div class="loc-chart">
+        <div class="loc-row">
+          <span class="loc-label">Code</span>
+          <div class="layer-bar-wrap"><div class="layer-bar loc-bar-code" style="width:{{ code_pct }}%"></div></div>
+          <span class="loc-value">{{ "{:,}".format(summary.get('total_code_lines',0)) }} <small>({{ code_pct }}%)</small></span>
+        </div>
+        <div class="loc-row">
+          <span class="loc-label">Comments</span>
+          <div class="layer-bar-wrap"><div class="layer-bar loc-bar-comment" style="width:{{ comment_pct }}%"></div></div>
+          <span class="loc-value">{{ "{:,}".format(summary.get('total_comment_lines',0)) }} <small>({{ comment_pct }}%)</small></span>
+        </div>
+        <div class="loc-row">
+          <span class="loc-label">Blank</span>
+          <div class="layer-bar-wrap"><div class="layer-bar loc-bar-blank" style="width:{{ blank_pct }}%"></div></div>
+          <span class="loc-value">{{ "{:,}".format(summary.get('total_blank_lines',0)) }} <small>({{ blank_pct }}%)</small></span>
+        </div>
+      </div>
+      {% else %}
+        <p class="empty-state">No data.</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- CLASSES -->
+<!-- ============================================================ -->
+<div id="section-classes" class="section-content hidden">
+  <div class="card">
+    <div class="table-toolbar">
+      <input type="text" id="class-search" class="input input-sm" placeholder="Filter classes…" />
+    </div>
+    <table class="table" id="classes-table">
+      <thead>
+        <tr>
+          <th>Class</th><th>Module</th><th>Bases</th>
+          <th class="text-right">Methods</th><th class="text-right">Line</th><th>Subclasses</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cls in result.all_classes %}
+        <tr class="class-row" data-search="{{ cls.name }} {{ cls.module }}">
+          <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=cls.path) }}" class="link-primary">{{ cls.name }}</a></td>
+          <td class="mono text-sm text-muted">{{ cls.module }}</td>
+          <td class="text-sm text-muted">{{ cls.bases | join(', ') or '—' }}</td>
+          <td class="text-right">{{ cls.method_count }}</td>
+          <td class="text-right text-muted">{{ cls.lineno }}</td>
+          <td class="text-sm text-muted">{{ cls.subclasses[:3] | join(', ') }}{% if cls.subclasses|length > 3 %}…{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">No classes found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- FUNCTIONS -->
+<!-- ============================================================ -->
+<div id="section-functions" class="section-content hidden">
+  <div class="card">
+    <div class="table-toolbar toolbar-row">
+      <input type="text" id="fn-search" class="input input-sm" placeholder="Filter functions…" />
+      <label class="checkbox-label"><input type="checkbox" id="fn-methods-only" /> Methods only</label>
+      <label class="checkbox-label"><input type="checkbox" id="fn-complex-only" /> High complexity only (≥10)</label>
+    </div>
+    <table class="table" id="functions-table">
+      <thead>
+        <tr>
+          <th>Function / Method</th><th>Module</th><th>Type</th>
+          <th class="text-right">Line</th><th class="text-right">Complexity</th>
+          <th>Calls</th><th>Callers</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fn in result.all_functions %}
+        <tr class="fn-row" data-search="{{ fn.name }} {{ fn.module }}"
+            data-method="{{ '1' if fn.is_method else '0' }}"
+            data-complexity="{{ fn.complexity }}">
+          <td class="mono text-sm">
+            <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=fn.path) }}" class="link-primary">
+              {% if fn.is_method %}{{ fn.parent_class }}.{% endif %}{{ fn.name }}
+            </a>
+          </td>
+          <td class="mono text-sm text-muted">{{ fn.module }}</td>
+          <td class="text-sm">{{ 'method' if fn.is_method else 'function' }}</td>
+          <td class="text-right text-muted">{{ fn.lineno }}</td>
+          <td class="text-right">
+            <span class="complexity-badge complexity-{{ 'high' if fn.complexity >= 10 else 'med' if fn.complexity >= 5 else 'low' }}">
+              {{ fn.complexity }}
+            </span>
+          </td>
+          <td class="text-sm text-muted mono">{{ fn.calls[:3] | join(', ') }}{% if fn.calls|length > 3 %}…{% endif %}</td>
+          <td class="text-sm text-muted mono">{{ fn.callers[:2] | join(', ') }}{% if fn.callers|length > 2 %}…{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="empty-state">No functions found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- DEPENDENCIES -->
+<!-- ============================================================ -->
+<div id="section-dependencies" class="section-content hidden">
+  <div class="dep-two-col">
+
+    <div class="card">
+      <h2 class="card-title">External Libraries ({{ result.external_libraries | length }})</h2>
+      {% if result.external_libraries %}
+      <table class="table">
+        <thead><tr><th>Library</th><th class="text-right">Modules using it</th><th>Used in</th></tr></thead>
+        <tbody>
+          {% for lib in result.external_libraries %}
+          <tr>
+            <td class="mono text-sm">{{ lib.name }}</td>
+            <td class="text-right">{{ lib.usage_count }}</td>
+            <td class="text-sm text-muted">{{ lib.used_by[:3] | join(', ') }}{% if lib.used_by|length > 3 %}…{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="empty-state">No external libraries detected.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Module Dependency Counts</h2>
+      <table class="table">
+        <thead><tr><th>Module</th><th class="text-right">Imported by</th><th class="text-right">Imports</th><th class="text-right">Coupling</th></tr></thead>
+        <tbody>
+          {% for row in result.module_metrics | sort(attribute='coupling', reverse=true) | list %}
+          {% if loop.index <= 20 %}
+          <tr>
+            <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.module }}</a></td>
+            <td class="text-right">{{ row.in_degree }}</td>
+            <td class="text-right">{{ row.out_degree }}</td>
+            <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.coupling >= 10 else 'med' if row.coupling >= 5 else 'low' }}">{{ row.coupling }}</span></td>
+          </tr>
+          {% endif %}
+          {% else %}<tr><td colspan="4" class="empty-state">No data</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- METRICS -->
+<!-- ============================================================ -->
+<div id="section-metrics" class="section-content hidden">
+  <div class="card">
+    <div class="table-toolbar">
+      <input type="text" id="metrics-search" class="input input-sm" placeholder="Filter modules…" />
+    </div>
+    <table class="table" id="metrics-table">
+      <thead>
+        <tr>
+          <th>Module</th><th class="text-right">Lines</th><th class="text-right">Code</th>
+          <th class="text-right">Comments</th><th class="text-right">Blank</th>
+          <th class="text-right">Classes</th><th class="text-right">Fns</th>
+          <th class="text-right">Imports</th><th class="text-right">Complexity</th>
+          <th class="text-right">Max CC</th><th class="text-right">In</th><th class="text-right">Out</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in result.module_metrics %}
+        <tr class="metrics-row" data-search="{{ row.path }} {{ row.module }}">
+          <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.path }}</a></td>
+          <td class="text-right">{{ row.lines }}</td>
+          <td class="text-right">{{ row.code_lines }}</td>
+          <td class="text-right text-muted">{{ row.comment_lines }}</td>
+          <td class="text-right text-muted">{{ row.blank_lines }}</td>
+          <td class="text-right">{{ row.classes }}</td>
+          <td class="text-right">{{ row.functions + row.methods }}</td>
+          <td class="text-right">{{ row.imports }}</td>
+          <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.complexity >= 20 else 'med' if row.complexity >= 8 else 'low' }}">{{ row.complexity }}</span></td>
+          <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.max_fn_complexity >= 10 else 'med' if row.max_fn_complexity >= 5 else 'low' }}">{{ row.max_fn_complexity }}</span></td>
+          <td class="text-right">{{ row.in_degree }}</td>
+          <td class="text-right">{{ row.out_degree }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="12" class="empty-state">No data</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ISSUES -->
+<!-- ============================================================ -->
+<div id="section-issues" class="section-content hidden">
+  {% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
+  {% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
+  {% set infos    = result.issues | selectattr('level','equalto','info')    | list %}
+  <div class="issue-filter-bar">
+    <button class="filter-btn active" data-filter="all">All <span class="badge">{{ result.issues|length }}</span></button>
+    <button class="filter-btn" data-filter="error">Errors <span class="badge badge-error">{{ errors|length }}</span></button>
+    <button class="filter-btn" data-filter="warning">Warnings <span class="badge badge-warning">{{ warnings|length }}</span></button>
+    <button class="filter-btn" data-filter="info">Info <span class="badge">{{ infos|length }}</span></button>
+  </div>
+  {% if result.issues %}
+  <div class="card" style="padding:0; overflow:hidden;">
+    <table class="table issues-table" id="issues-inline-table">
+      <thead>
+        <tr><th>Severity</th><th>Category</th><th>Issue</th><th>Detail</th><th>Location</th></tr>
+      </thead>
+      <tbody>
+        {% for issue in result.issues %}
+        <tr class="issue-row" data-level="{{ issue.level }}">
+          <td><span class="badge badge-{{ issue.level }}">{{ issue.level }}</span></td>
+          <td class="text-sm text-muted">{{ issue.category.replace('_',' ') }}</td>
+          <td class="issue-title-cell">{{ issue.title }}</td>
+          <td class="text-sm text-muted">{{ issue.detail }}</td>
+          <td>{% if issue.location %}<code class="mono text-sm">{{ issue.location }}</code>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="card"><p class="empty-state" style="padding:2rem 0">🎉 No issues detected.</p></div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Section tab switching ─────────────────────────────────────────────
+  function switchSection(name) {
+    document.querySelectorAll('.section-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
+    const btn = document.querySelector(`.section-tab-btn[data-section="${name}"]`);
+    if (btn) btn.classList.add('active');
+    const sec = document.getElementById('section-' + name);
+    if (sec) sec.classList.remove('hidden');
+  }
+
+  document.querySelectorAll('.section-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchSection(btn.dataset.section));
+  });
+
+  // ── Classes search ────────────────────────────────────────────────────
+  document.getElementById('class-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.class-row').forEach(r => {
+      r.style.display = r.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+
+  // ── Functions filter ──────────────────────────────────────────────────
+  function applyFnFilter() {
+    const q         = document.getElementById('fn-search').value.toLowerCase();
+    const methOnly  = document.getElementById('fn-methods-only').checked;
+    const complexOnly = document.getElementById('fn-complex-only').checked;
+    document.querySelectorAll('.fn-row').forEach(r => {
+      const matchQ  = r.dataset.search.toLowerCase().includes(q);
+      const matchM  = !methOnly  || r.dataset.method === '1';
+      const matchC  = !complexOnly || parseInt(r.dataset.complexity, 10) >= 10;
+      r.style.display = (matchQ && matchM && matchC) ? '' : 'none';
+    });
+  }
+  document.getElementById('fn-search').addEventListener('input', applyFnFilter);
+  document.getElementById('fn-methods-only').addEventListener('change', applyFnFilter);
+  document.getElementById('fn-complex-only').addEventListener('change', applyFnFilter);
+
+  // ── Metrics search ────────────────────────────────────────────────────
+  document.getElementById('metrics-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.metrics-row').forEach(r => {
+      r.style.display = r.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+
+  // ── Issues filter (inline) ────────────────────────────────────────────
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const f = btn.dataset.filter;
+      document.querySelectorAll('.issue-row').forEach(r => {
+        r.style.display = (f === 'all' || r.dataset.level === f) ? '' : 'none';
+      });
+    });
+  });
+</script>
+{% endblock %}

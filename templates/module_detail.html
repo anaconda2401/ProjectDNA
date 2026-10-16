@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}{{ module.path }} — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header page-header-sub">
+  <div class="breadcrumb">
+    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">{{ record.project_name }}</a>
+    › <a href="{{ url_for('modules', analysis_id=record.id) }}">Files</a>
+    › {{ module.path }}
+  </div>
+  <h1 class="mono">{{ module.path }}</h1>
+  <p class="page-sub">
+    Module: <code class="mono">{{ module.module_name }}</code>
+    &nbsp;·&nbsp; Layer: <span class="layer-tag layer-{{ module.layer }}">{{ module.layer }}</span>
+    &nbsp;·&nbsp; {{ module.lines }} lines
+    &nbsp;·&nbsp; Complexity: {{ module.complexity }}
+  </p>
+</div>
+
+{% if module.parse_error %}
+<div class="alert alert-error">
+  <strong>Parse Error:</strong> {{ module.parse_error }}
+</div>
+{% endif %}
+
+<div class="detail-grid">
+
+  <!-- Imports -->
+  <div class="card">
+    <h2 class="card-title">Imports ({{ module.imports|length }})</h2>
+    {% if module.imports %}
+    <table class="table">
+      <thead><tr><th>Module</th><th>Names</th><th>Type</th><th>Line</th></tr></thead>
+      <tbody>
+        {% for imp in module.imports %}
+        <tr>
+          <td class="mono text-sm">{{ imp.module }}</td>
+          <td class="mono text-sm text-muted">{{ imp.names | join(', ') or '—' }}</td>
+          <td class="text-sm">{{ 'from' if imp.is_from else 'import' }}</td>
+          <td class="text-right text-muted">{{ imp.line }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No imports</p>
+    {% endif %}
+  </div>
+
+  <!-- Dependents -->
+  <div class="card">
+    <h2 class="card-title">Dependency Relationships</h2>
+    <div class="dep-columns">
+      <div>
+        <h3 class="sub-heading">Imported by</h3>
+        {% if imported_by %}
+          <ul class="dep-list">
+            {% for m in imported_by %}
+            <li class="mono text-sm">{{ m }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted text-sm">Not imported by any project module</p>
+        {% endif %}
+      </div>
+      <div>
+        <h3 class="sub-heading">Imports from project</h3>
+        {% if imports_to %}
+          <ul class="dep-list">
+            {% for m in imports_to %}
+            <li class="mono text-sm">{{ m }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted text-sm">No project imports</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Classes -->
+  <div class="card">
+    <h2 class="card-title">Classes ({{ module.classes|length }})</h2>
+    {% if module.classes %}
+      {% for cls in module.classes %}
+      <div class="class-block">
+        <div class="class-header">
+          <span class="class-keyword">class</span>
+          <span class="class-name">{{ cls.name }}</span>
+          {% if cls.bases %}
+            <span class="class-bases">({{ cls.bases | join(', ') }})</span>
+          {% endif %}
+          <span class="class-lines text-muted text-sm">line {{ cls.lineno }}–{{ cls.end_lineno }}</span>
+        </div>
+        {% if cls.docstring %}
+        <p class="class-doc text-sm text-muted">{{ cls.docstring | truncate(180) }}</p>
+        {% endif %}
+        {% if cls.methods %}
+        <table class="table table-sm">
+          <thead><tr><th>Method</th><th>Args</th><th>Lines</th><th>Complexity</th></tr></thead>
+          <tbody>
+            {% for m in cls.methods %}
+            <tr>
+              <td class="mono text-sm">{{ m.name }}</td>
+              <td class="mono text-sm text-muted">{{ m.args | join(', ') }}</td>
+              <td class="text-right text-sm">{{ m.lineno }}–{{ m.end_lineno }}</td>
+              <td class="text-right">
+                <span class="complexity-badge complexity-{{ 'high' if m.complexity >= 10 else 'med' if m.complexity >= 5 else 'low' }}">
+                  {{ m.complexity }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-state">No classes</p>
+    {% endif %}
+  </div>
+
+  <!-- Top-level Functions -->
+  <div class="card">
+    <h2 class="card-title">Top-level Functions ({{ module.functions|length }})</h2>
+    {% if module.functions %}
+    <table class="table">
+      <thead><tr><th>Name</th><th>Args</th><th>Lines</th><th>Complexity</th><th>Calls</th></tr></thead>
+      <tbody>
+        {% for fn in module.functions %}
+        <tr>
+          <td class="mono text-sm">{{ fn.name }}</td>
+          <td class="mono text-sm text-muted">{{ fn.args | join(', ') }}</td>
+          <td class="text-right text-sm">{{ fn.lineno }}–{{ fn.end_lineno }}</td>
+          <td class="text-right">
+            <span class="complexity-badge complexity-{{ 'high' if fn.complexity >= 10 else 'med' if fn.complexity >= 5 else 'low' }}">
+              {{ fn.complexity }}
+            </span>
+          </td>
+          <td class="text-sm text-muted mono">{{ fn.calls[:4] | join(', ') }}{% if fn.calls|length > 4 %}…{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="empty-state">No top-level functions</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

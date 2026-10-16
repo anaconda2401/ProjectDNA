@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ProjectDNA Report — {{ record.project_name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #212529; background: #fff; padding: 2rem; }
+  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 .5rem; border-bottom: 1px solid #dee2e6; padding-bottom: .3rem; }
+  h3 { font-size: .875rem; font-weight: 600; margin: 1rem 0 .3rem; }
+  p  { margin-bottom: .5rem; color: #495057; }
+  code, .mono { font-family: 'JetBrains Mono', monospace; font-size: .8em; }
+  .muted { color: #6c757d; }
+
+  /* Header */
+  .report-header { border-bottom: 2px solid #212529; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+  .report-meta   { font-size: .8rem; color: #6c757d; margin-top: .2rem; }
+
+  /* Stats grid */
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; margin-bottom: 1.5rem; }
+  .stat  { border: 1px solid #dee2e6; border-radius: 4px; padding: .5rem .75rem; }
+  .stat-val { font-size: 1.3rem; font-weight: 700; }
+  .stat-lbl { font-size: .7rem; color: #6c757d; text-transform: uppercase; letter-spacing: .04em; }
+
+  /* Tables */
+  table  { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: .8rem; }
+  th     { text-align: left; padding: .3rem .5rem; font-size: .7rem; font-weight: 600;
+           text-transform: uppercase; letter-spacing: .04em; color: #6c757d;
+           border-bottom: 1px solid #dee2e6; white-space: nowrap; }
+  td     { padding: .3rem .5rem; border-bottom: 1px solid #f1f3f5; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .tr    { text-align: right; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: .1rem .35rem; border-radius: 3px;
+           font-size: .65rem; font-weight: 600; text-transform: uppercase; }
+  .be { background:#fff5f5; color:#c92a2a; border:1px solid #ffc9c9; }
+  .bw { background:#fff9db; color:#e67700; border:1px solid #ffec99; }
+  .bi { background:#e7f5ff; color:#1971c2; border:1px solid #a5d8ff; }
+
+  /* Two columns */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+  @media print {
+    body { padding: 1rem; }
+    h2 { page-break-before: auto; }
+    table { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+{% set s = result.summary %}
+
+<div class="report-header">
+  <h1>ProjectDNA Analysis Report — {{ record.project_name }}</h1>
+  <div class="report-meta">
+    Generated: {{ record.created_at }} &nbsp;·&nbsp; Analysis time: {{ result.elapsed }}s
+  </div>
+</div>
+
+<!-- Summary stats -->
+<h2>Project Summary</h2>
+<div class="stats">
+  <div class="stat"><div class="stat-val">{{ s.total_files }}</div><div class="stat-lbl">Files</div></div>
+  <div class="stat"><div class="stat-val">{{ "{:,}".format(s.total_lines) }}</div><div class="stat-lbl">Total Lines</div></div>
+  <div class="stat"><div class="stat-val">{{ "{:,}".format(s.get('total_code_lines',0)) }}</div><div class="stat-lbl">Code Lines</div></div>
+  <div class="stat"><div class="stat-val">{{ s.total_classes }}</div><div class="stat-lbl">Classes</div></div>
+  <div class="stat"><div class="stat-val">{{ s.total_functions }}</div><div class="stat-lbl">Functions</div></div>
+  <div class="stat"><div class="stat-val">{{ s.get('total_methods',0) }}</div><div class="stat-lbl">Methods</div></div>
+  <div class="stat"><div class="stat-val">{{ s.get('total_imports',0) }}</div><div class="stat-lbl">Imports</div></div>
+  <div class="stat"><div class="stat-val">{{ s.get('external_library_count',0) }}</div><div class="stat-lbl">Ext. Libraries</div></div>
+  <div class="stat"><div class="stat-val">{{ s.total_complexity }}</div><div class="stat-lbl">Total Complexity</div></div>
+  <div class="stat"><div class="stat-val">{{ s.avg_complexity }}</div><div class="stat-lbl">Avg Complexity</div></div>
+</div>
+
+<!-- Issues -->
+<h2>Issues ({{ result.issues | length }})</h2>
+{% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
+{% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
+<p>
+  <span class="badge be">{{ errors|length }} errors</span>&nbsp;
+  <span class="badge bw">{{ warnings|length }} warnings</span>&nbsp;
+  <span class="badge bi">{{ (result.issues|length - errors|length - warnings|length) }} info</span>
+</p>
+{% if result.issues %}
+<table>
+  <thead><tr><th>Severity</th><th>Category</th><th>Issue</th><th>Location</th></tr></thead>
+  <tbody>
+    {% for issue in result.issues %}
+    <tr>
+      <td><span class="badge {{ 'be' if issue.level=='error' else 'bw' if issue.level=='warning' else 'bi' }}">{{ issue.level }}</span></td>
+      <td class="muted">{{ issue.category.replace('_',' ') }}</td>
+      <td>{{ issue.title }}<br/><small class="muted">{{ issue.detail }}</small></td>
+      <td><code>{{ issue.location or '—' }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No issues detected.</p>
+{% endif %}
+
+<!-- External libraries -->
+{% if result.external_libraries %}
+<h2>External Libraries</h2>
+<table>
+  <thead><tr><th>Library</th><th class="tr">Used by (modules)</th></tr></thead>
+  <tbody>
+    {% for lib in result.external_libraries %}
+    <tr>
+      <td><code>{{ lib.name }}</code></td>
+      <td class="tr">{{ lib.usage_count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- Architectural layers -->
+<h2>Architectural Layers</h2>
+{% set layer_counts = {} %}
+{% for m in result.modules %}{% set _ = layer_counts.update({m.layer: (layer_counts.get(m.layer, 0) + 1)}) %}{% endfor %}
+<table>
+  <thead><tr><th>Layer</th><th class="tr">Modules</th></tr></thead>
+  <tbody>
+    {% for layer, count in layer_counts.items() | sort(attribute='1', reverse=true) %}
+    <tr><td>{{ layer }}</td><td class="tr">{{ count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="two-col">
+
+<!-- Top complexity hotspots -->
+<div>
+<h2>Complexity Hotspots (Top 20)</h2>
+<table>
+  <thead><tr><th>Module</th><th class="tr">Lines</th><th class="tr">Complexity</th></tr></thead>
+  <tbody>
+    {% for row in result.module_metrics[:20] %}
+    <tr>
+      <td><code>{{ row.path }}</code></td>
+      <td class="tr">{{ row.lines }}</td>
+      <td class="tr">{{ row.complexity }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<!-- Most coupled modules -->
+<div>
+<h2>Highest Coupling (Top 20)</h2>
+<table>
+  <thead><tr><th>Module</th><th class="tr">Fan-in</th><th class="tr">Fan-out</th></tr></thead>
+  <tbody>
+    {% for row in result.module_metrics | sort(attribute='coupling', reverse=true) | list %}
+    {% if loop.index <= 20 %}
+    <tr>
+      <td><code>{{ row.module }}</code></td>
+      <td class="tr">{{ row.in_degree }}</td>
+      <td class="tr">{{ row.out_degree }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+</div>
+
+<!-- All modules -->
+<h2>Module Metrics</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Path</th><th>Layer</th>
+      <th class="tr">Lines</th><th class="tr">Code</th>
+      <th class="tr">Classes</th><th class="tr">Fns</th>
+      <th class="tr">Complexity</th><th class="tr">In</th><th class="tr">Out</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in result.module_metrics %}
+    <tr>
+      <td><code>{{ row.path }}</code></td>
+      <td>{{ result.layer_map.get(row.module, 'other') }}</td>
+      <td class="tr">{{ row.lines }}</td>
+      <td class="tr">{{ row.code_lines }}</td>
+      <td class="tr">{{ row.classes }}</td>
+      <td class="tr">{{ row.functions + row.methods }}</td>
+      <td class="tr">{{ row.complexity }}</td>
+      <td class="tr">{{ row.in_degree }}</td>
+      <td class="tr">{{ row.out_degree }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Classes -->
+{% if result.all_classes %}
+<h2>Classes ({{ result.all_classes | length }})</h2>
+<table>
+  <thead><tr><th>Class</th><th>Module</th><th>Bases</th><th class="tr">Methods</th><th class="tr">Line</th></tr></thead>
+  <tbody>
+    {% for cls in result.all_classes %}
+    <tr>
+      <td><code>{{ cls.name }}</code></td>
+      <td class="muted"><code>{{ cls.module }}</code></td>
+      <td class="muted">{{ cls.bases | join(', ') or '—' }}</td>
+      <td class="tr">{{ cls.method_count }}</td>
+      <td class="tr">{{ cls.lineno }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- High complexity functions -->
+{% set complex_fns = result.all_functions | selectattr('complexity', 'ge', 10) | list %}
+{% if complex_fns %}
+<h2>High Complexity Functions (CC ≥ 10)</h2>
+<table>
+  <thead><tr><th>Function</th><th>Module</th><th class="tr">Line</th><th class="tr">Complexity</th></tr></thead>
+  <tbody>
+    {% for fn in complex_fns %}
+    <tr>
+      <td><code>{% if fn.is_method %}{{ fn.parent_class }}.{% endif %}{{ fn.name }}</code></td>
+      <td class="muted"><code>{{ fn.module }}</code></td>
+      <td class="tr">{{ fn.lineno }}</td>
+      <td class="tr">{{ fn.complexity }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<p style="margin-top:2rem; color:#adb5bd; font-size:.75rem;">
+  Generated by ProjectDNA &mdash; Python Architecture Mining Tool
+</p>
+</body>
+</html>

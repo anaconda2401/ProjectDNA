@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}ProjectDNA — Upload Project{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Analyze a Python Project</h1>
+  <p class="page-sub">Choose a source below, enter a project name, then click Run Analysis.</p>
+</div>
+
+<div class="upload-layout">
+  <!-- Upload form -->
+  <div class="card upload-card">
+    <h2 class="card-title">New Analysis</h2>
+
+    <div class="form-group">
+      <label for="project_name">Project Name</label>
+      <input type="text" id="project_name" class="input" placeholder="e.g. my-django-app" required autocomplete="off" />
+    </div>
+
+    <!-- Source tabs -->
+    <div class="source-tabs">
+      <button type="button" class="tab-btn active" data-tab="folder">Folder</button>
+      <button type="button" class="tab-btn" data-tab="zip">ZIP Upload</button>
+      <button type="button" class="tab-btn" data-tab="github">GitHub URL</button>
+    </div>
+
+    <!-- FOLDER tab -->
+    <div id="tab-folder" class="tab-panel">
+      <div class="form-group">
+        <label for="folder_input">Project Folder</label>
+        <div class="file-drop" id="folder-drop">
+          <input type="file" id="folder_input" webkitdirectory directory multiple class="file-input" />
+          <div class="file-drop-label">
+            <span class="file-icon">📁</span>
+            <span id="folder-label-text">Click to select a project folder</span>
+          </div>
+        </div>
+        <p class="field-hint" id="folder-file-count">Only .py files will be uploaded. Maximum 80 MB / 600 files.</p>
+      </div>
+      <div id="folder-error" class="field-error hidden"></div>
+      <button type="button" class="btn btn-primary btn-full" id="folder-submit-btn">
+        <span class="btn-icon">▶</span> Run Analysis
+      </button>
+    </div>
+
+    <!-- ZIP tab -->
+    <div id="tab-zip" class="tab-panel hidden">
+      <form id="zip-form" action="{{ url_for('analyze') }}" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="source" value="zip" />
+        <input type="hidden" name="project_name" id="zip-project-name" />
+        <div class="form-group">
+          <label for="zip_file">ZIP Archive</label>
+          <div class="file-drop" id="file-drop">
+            <input type="file" id="zip_file" name="zip_file" accept=".zip" class="file-input" />
+            <div class="file-drop-label">
+              <span class="file-icon">📦</span>
+              <span id="file-label-text">Drop ZIP here or click to browse</span>
+            </div>
+          </div>
+          <p class="field-hint">Maximum 50 MB.</p>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="zip-submit-btn">
+          <span class="btn-icon">▶</span> Run Analysis
+        </button>
+      </form>
+    </div>
+
+    <!-- GITHUB tab -->
+    <div id="tab-github" class="tab-panel hidden">
+      <form id="github-form" action="{{ url_for('analyze') }}" method="POST">
+        <input type="hidden" name="source" value="github" />
+        <input type="hidden" name="project_name" id="github-project-name" />
+        <div class="form-group">
+          <label for="github_url">GitHub Repository URL</label>
+          <input type="text" id="github_url" name="github_url" class="input"
+                 placeholder="https://github.com/user/repo" autocomplete="off" />
+          <p class="field-hint">Public repositories only. Shallow-cloned (depth=1).</p>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="github-submit-btn">
+          <span class="btn-icon">▶</span> Run Analysis
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Past analyses -->
+  <div class="card history-card">
+    <h2 class="card-title">Past Analyses</h2>
+    {% if analyses %}
+      <table class="table">
+        <thead>
+          <tr><th>#</th><th>Project</th><th>Analyzed</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for a in analyses %}
+          <tr>
+            <td class="mono text-muted">{{ a.id }}</td>
+            <td><a href="{{ url_for('dashboard', analysis_id=a.id) }}" class="link-primary">{{ a.project_name }}</a></td>
+            <td class="text-muted text-sm">{{ a.created_at }}</td>
+            <td>
+              <form action="{{ url_for('delete_analysis', analysis_id=a.id) }}" method="POST"
+                    onsubmit="return confirm('Delete this analysis?')">
+                <button type="submit" class="btn-ghost-sm">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No analyses yet. Run your first one above.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Tab switching ──────────────────────────────────────────────────────
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  let activeTab = 'folder';
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.tab;
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById('tab-' + activeTab).classList.remove('hidden');
+    });
+  });
+
+  // ── Sync project name across sub-forms ───────────────────────────────
+  document.getElementById('project_name').addEventListener('input', function() {
+    const v = this.value;
+    const zipPN = document.getElementById('zip-project-name');
+    const ghPN  = document.getElementById('github-project-name');
+    if (zipPN) zipPN.value = v;
+    if (ghPN)  ghPN.value  = v;
+  });
+
+  // ── ZIP form ──────────────────────────────────────────────────────────
+  const zipFile = document.getElementById('zip_file');
+  zipFile.addEventListener('change', () => {
+    if (zipFile.files.length > 0)
+      document.getElementById('file-label-text').textContent = zipFile.files[0].name;
+  });
+  document.getElementById('zip-form').addEventListener('submit', function() {
+    const pn = document.getElementById('project_name').value.trim();
+    if (!pn) { alert('Please enter a project name.'); event.preventDefault(); return; }
+    document.getElementById('zip-project-name').value = pn;
+    const btn = document.getElementById('zip-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Analyzing…';
+  });
+
+  // ── GitHub form ───────────────────────────────────────────────────────
+  document.getElementById('github-form').addEventListener('submit', function(event) {
+    const pn = document.getElementById('project_name').value.trim();
+    if (!pn) { alert('Please enter a project name.'); event.preventDefault(); return; }
+    document.getElementById('github-project-name').value = pn;
+    const btn = document.getElementById('github-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Cloning & Analyzing…';
+  });
+
+  // ── Folder upload ─────────────────────────────────────────────────────
+  const folderInput = document.getElementById('folder_input');
+  const folderCount = document.getElementById('folder-file-count');
+  const folderError = document.getElementById('folder-error');
+
+  // Directories whose contents should NEVER be uploaded
+  const IGNORED_DIRS = new Set([
+    '.venv', 'venv', 'env', '.env',
+    '__pycache__', '.git', '.hg', '.svn',
+    'node_modules', 'build', 'dist',
+    '.tox', '.eggs', '.mypy_cache', '.pytest_cache',
+    '.ruff_cache', '.cache',
+    // venv internal layout dirs
+    'Scripts', 'bin', 'lib', 'include', 'site-packages',
+    'Lib',  // Windows venv
+  ]);
+
+  function isDirIgnored(relPath) {
+    // Check every directory component of the path (all parts except filename)
+    const parts = relPath.split('/');
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dir = parts[i];
+      if (IGNORED_DIRS.has(dir) || dir.endsWith('.egg-info') || dir.endsWith('.dist-info')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Acceptable Python source extensions (.pyc / .pyd / .pyo are compiled — skip them)
+  const PY_EXTS = ['.py', '.pyx', '.pyi'];
+  const ALLOWED_NAMES = new Set([
+    'requirements.txt', 'setup.py', 'setup.cfg',
+    'pyproject.toml', 'Pipfile', 'Pipfile.lock',
+    'tox.ini', 'pytest.ini', '.flake8',
+  ]);
+
+  function shouldUpload(file) {
+    const relPath = file.webkitRelativePath || file.name;
+    // Reject files inside ignored directories
+    if (isDirIgnored(relPath)) return false;
+    const name = file.name;
+    // Accept only Python source files or known config filenames
+    return PY_EXTS.some(ext => name.endsWith(ext)) || ALLOWED_NAMES.has(name);
+  }
+
+  folderInput.addEventListener('change', () => {
+    const allFiles = Array.from(folderInput.files);
+    const toUpload = allFiles.filter(shouldUpload);
+    const sizeKB   = Math.round(toUpload.reduce((s, f) => s + f.size, 0) / 1024);
+    const skipped  = allFiles.length - toUpload.length;
+    const labelEl  = document.getElementById('folder-label-text');
+
+    if (allFiles.length === 0) {
+      labelEl.textContent = 'Click to select a project folder';
+      folderCount.textContent = 'Only .py files will be uploaded. Maximum 80 MB / 600 files.';
+      return;
+    }
+    const topDir = (allFiles[0].webkitRelativePath || '').split('/')[0] || 'selected folder';
+    labelEl.textContent = `📂 ${topDir}`;
+    folderCount.textContent =
+      `${toUpload.length} Python files selected (${sizeKB} KB)` +
+      (skipped > 0 ? ` — ${skipped} non-Python/build files ignored` : '');
+  });
+
+  document.getElementById('folder-submit-btn').addEventListener('click', async () => {
+    folderError.classList.add('hidden');
+    const pn = document.getElementById('project_name').value.trim();
+    if (!pn) { showFolderError('Please enter a project name.'); return; }
+
+    const allFiles = Array.from(folderInput.files);
+    if (allFiles.length === 0) { showFolderError('Please select a folder first.'); return; }
+
+    const toUpload = allFiles.filter(shouldUpload);
+
+    if (toUpload.length === 0) {
+      showFolderError('No Python (.py) files found after filtering. Make sure you selected the right folder.');
+      return;
+    }
+
+    // Warn before uploading very large selections
+    const sizeMB = toUpload.reduce((s, f) => s + f.size, 0) / (1024 * 1024);
+    if (sizeMB > 79) {
+      showFolderError(`Selected files are ${sizeMB.toFixed(1)} MB, which exceeds the 80 MB limit. Try a smaller project.`);
+      return;
+    }
+
+    const btn = document.getElementById('folder-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Uploading ${toUpload.length} files…`;
+
+    const fd = new FormData();
+    fd.append('project_name', pn);
+    for (const file of toUpload) {
+      const relPath = file.webkitRelativePath || file.name;
+      fd.append('folder_files', file, relPath);
+    }
+
+    try {
+      const resp = await fetch('/analyze-folder', { method: 'POST', body: fd });
+      let data;
+      try {
+        data = await resp.json();
+      } catch {
+        // Server returned non-JSON (HTML error page) — extract useful info
+        showFolderError(`Server error (HTTP ${resp.status}). The upload may be too large or the server crashed.`);
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">▶</span> Run Analysis';
+        return;
+      }
+      if (data.error) {
+        showFolderError(data.error);
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">▶</span> Run Analysis';
+      } else {
+        window.location.href = data.redirect;
+      }
+    } catch (err) {
+      showFolderError('Network error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = '<span class="btn-icon">▶</span> Run Analysis';
+    }
+  });
+
+  function showFolderError(msg) {
+    folderError.textContent = msg;
+    folderError.classList.remove('hidden');
+  }
+</script>
+{% endblock %}

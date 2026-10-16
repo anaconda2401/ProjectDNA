@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Issues — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header page-header-sub">
+  <div class="breadcrumb">
+    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">← {{ record.project_name }}</a>
+  </div>
+  <h1>Issues</h1>
+  <p class="page-sub">Static analysis findings for <strong>{{ record.project_name }}</strong></p>
+</div>
+
+{% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
+{% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
+{% set infos    = result.issues | selectattr('level','equalto','info')    | list %}
+
+<div class="issue-filter-bar">
+  <button class="filter-btn active" data-filter="all">All <span class="badge">{{ result.issues|length }}</span></button>
+  <button class="filter-btn" data-filter="error">Errors <span class="badge badge-error">{{ errors|length }}</span></button>
+  <button class="filter-btn" data-filter="warning">Warnings <span class="badge badge-warning">{{ warnings|length }}</span></button>
+  <button class="filter-btn" data-filter="info">Info <span class="badge">{{ infos|length }}</span></button>
+</div>
+
+{% if result.issues %}
+<div class="issues-table-wrap card">
+  <table class="table issues-table" id="issues-table">
+    <thead>
+      <tr>
+        <th>Severity</th>
+        <th>Category</th>
+        <th>Issue</th>
+        <th>Detail</th>
+        <th>Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for issue in result.issues %}
+      <tr class="issue-row" data-level="{{ issue.level }}">
+        <td>
+          <span class="badge badge-{{ issue.level }}">{{ issue.level }}</span>
+        </td>
+        <td class="text-sm text-muted">{{ issue.category.replace('_',' ') }}</td>
+        <td class="issue-title-cell">{{ issue.title }}</td>
+        <td class="text-sm text-muted">{{ issue.detail }}</td>
+        <td>
+          {% if issue.location %}
+            <code class="mono text-sm">{{ issue.location }}</code>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <p class="empty-state" style="padding: 2rem 0">🎉 No issues detected in this project.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const filterBtns = document.querySelectorAll('.filter-btn');
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.dataset.filter;
+      document.querySelectorAll('.issue-row').forEach(row => {
+        row.style.display = (filter === 'all' || row.dataset.level === filter) ? '' : 'none';
+      });
+    });
+  });
+</script>
+{% endblock %}
