@@ -59,6 +59,7 @@ class ModuleInfo:
     comment_lines: int = 0
     code_lines: int = 0
     complexity: int = 0
+    file_hash: str = ""
 
 
 @dataclass

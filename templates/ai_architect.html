@@ -1,0 +1,788 @@
+{% extends "base.html" %}
+{% block title %}AI Architect — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+{% set active_nav = 'ai_architect' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 0.2rem 0; letter-spacing: -0.02em;">AI Architecture Intelligence Console</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Automated codebase review, section-wise refactoring recommendations, change impact planning, and architecture Q&amp;A.</p>
+  </div>
+</div>
+
+<!-- Controls & Review Trigger Card -->
+<div class="card animate-enter" style="margin-bottom: 1.25rem; padding: 1rem 1.25rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <label for="review-mode-select" style="font-weight: 500; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+        Review Engine:
+      </label>
+      <select id="review-mode-select" class="input input-sm" style="width: auto;">
+        <option value="auto" selected>Auto (Groq AI with Local Fallback)</option>
+        <option value="groq" {% if not groq_available %}disabled{% endif %}>Groq API Only {% if not groq_available %}(No API Key){% endif %}</option>
+        <option value="local">Deterministic Local Engine (Offline)</option>
+      </select>
+
+      <button id="btn-run-review" class="btn btn-primary" onclick="triggerReview()">
+        <span id="btn-review-spinner" style="display: none; margin-right: 4px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+        </span>
+        <span id="btn-review-text">Run Architecture Review</span>
+      </button>
+    </div>
+
+    <!-- Provenance & Status Badge Container -->
+    <div id="provenance-container" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+      {% if latest_review %}
+        <span class="badge badge-info" id="provenance-badge">
+          {% if latest_review.provider == 'combined' %}
+            Combined Review (Groq + Static)
+          {% elif latest_review.provider == 'groq' %}
+            Groq-Assisted Review
+          {% else %}
+            Local Static Analysis
+          {% endif %}
+        </span>
+        {% if latest_review.model %}
+          <span class="mono text-muted text-xs" id="model-badge">Model: {{ latest_review.model }}</span>
+        {% endif %}
+      {% else %}
+        <span class="badge" id="provenance-badge">Ready for Review</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Status Warning / Fallback Notice -->
+  <div id="status-notice-bar" style="margin-top: 0.85rem; display: {% if latest_review and latest_review.status == 'fallback_local' %}block{% else %}none{% endif %};">
+    <div class="flash flash-warning" style="margin: 0; padding: 0.5rem 0.85rem; font-size: 0.8125rem;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span id="status-notice-text">
+        {{ latest_review.status_message if latest_review else '' }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Section Navigation Tabs -->
+<div class="section-tab-nav animate-enter">
+  <button class="section-tab-btn active" data-tab="tab-review" onclick="switchTab('tab-review')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    <span>Architecture Review</span>
+    <span class="tab-count" id="findings-count-badge">{% if latest_review %}{{ latest_review.findings | length }}{% else %}0{% endif %}</span>
+  </button>
+  <button class="section-tab-btn" data-tab="tab-planner" onclick="switchTab('tab-planner')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    <span>Change Planner</span>
+  </button>
+  <button class="section-tab-btn" data-tab="tab-ask" onclick="switchTab('tab-ask')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span>Architecture Q&amp;A</span>
+  </button>
+</div>
+
+<!-- TAB 1: ARCHITECTURE REVIEW & FINDINGS -->
+<div id="tab-review" class="tab-pane active">
+  <!-- Shimmer Skeleton Loading State -->
+  <div id="review-loading" style="display: none;" class="card skeleton-card animate-enter">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <span class="spinner"></span>
+        <strong style="color: var(--text); font-size: 0.95rem;">Evaluating AST Digraphs &amp; Architecture Rules…</strong>
+      </div>
+      <span class="mono text-muted text-xs">Deterministic Verification</span>
+    </div>
+    <div class="skeleton-bar skeleton-header"></div>
+    <div class="skeleton-bar skeleton-line"></div>
+    <div class="skeleton-bar skeleton-line"></div>
+    <div class="skeleton-bar skeleton-line-short"></div>
+  </div>
+
+  <!-- Review Content -->
+  <div id="review-content" style="display: {% if latest_review %}block{% else %}none{% endif %};">
+    <!-- Executive Summary Card (Clean, Non-Tacky Vercel Style) -->
+    <div class="card animate-enter" style="margin-bottom: 1.25rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
+        <h2 style="font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--text);">
+          Architectural Synthesis &amp; Findings
+        </h2>
+        <span class="badge badge-ok" style="font-size: 0.72rem;">
+          Verified Ground Truth
+        </span>
+      </div>
+
+      <p id="review-summary-text" style="font-size: 0.875rem; line-height: 1.6; margin-bottom: 0.75rem; color: var(--text);">
+        {{ latest_review.review_summary if latest_review else '' }}
+      </p>
+
+      {% if latest_review and latest_review.architecture_overview %}
+        <div style="background: var(--surface-alt); border-left: 3px solid var(--accent); padding: 0.75rem 1rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-top: 0.75rem;">
+          <h4 style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem; letter-spacing: 0.05em;">
+            Structural Boundaries &amp; Layers
+          </h4>
+          <p id="review-overview-text" style="font-size: 0.8125rem; margin: 0; color: var(--text);">{{ latest_review.architecture_overview }}</p>
+        </div>
+      {% endif %}
+
+      <!-- Architecture Vital Signs Meter -->
+      <div class="vital-signs-grid">
+        <div class="vital-sign-card">
+          <div class="vital-sign-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--red);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div>
+            <div class="vital-sign-val" id="vital-crit-val" style="color: var(--red);">0</div>
+            <div class="vital-sign-label">High / Critical</div>
+          </div>
+        </div>
+
+        <div class="vital-sign-card">
+          <div class="vital-sign-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--orange);"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <div>
+            <div class="vital-sign-val" id="vital-comp-val">0</div>
+            <div class="vital-sign-label">Complexity Hotspots</div>
+          </div>
+        </div>
+
+        <div class="vital-sign-card">
+          <div class="vital-sign-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </div>
+          <div>
+            <div class="vital-sign-val" id="vital-coupling-val">0</div>
+            <div class="vital-sign-label">Coupling Issues</div>
+          </div>
+        </div>
+
+        <div class="vital-sign-card">
+          <div class="vital-sign-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--green);"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <div class="vital-sign-val" id="vital-rel-val">0</div>
+            <div class="vital-sign-label">Reliability / Smells</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section Control Toolbar -->
+    <div class="card" style="margin-bottom: 1.25rem; padding: 0.75rem 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <!-- Left: Grouping Switcher -->
+        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; font-weight: 500; color: var(--text-muted); text-transform: uppercase;">
+            View By:
+          </span>
+          <button class="filter-btn active group-mode-btn" data-mode="category" onclick="setGroupMode('category')">
+            Category
+          </button>
+          <button class="filter-btn group-mode-btn" data-mode="severity" onclick="setGroupMode('severity')">
+            Severity
+          </button>
+          <button class="filter-btn group-mode-btn" data-mode="file" onclick="setGroupMode('file')">
+            File
+          </button>
+        </div>
+
+        <!-- Right: Real-time search & Severity filter -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; flex: 1; justify-content: flex-end; min-width: 280px;">
+          <input 
+            type="text" 
+            id="findings-search-input" 
+            class="input input-sm" 
+            placeholder="Filter findings… (Press '/' to focus)" 
+            style="max-width: 240px;"
+          />
+
+          <div style="display: flex; gap: 0.25rem; align-items: center;">
+            <button class="filter-btn active severity-chip" data-severity="all" onclick="filterBySeverity('all')">All</button>
+            <button class="filter-btn severity-chip" data-severity="critical" onclick="filterBySeverity('critical')">Critical</button>
+            <button class="filter-btn severity-chip" data-severity="high" onclick="filterBySeverity('high')">High</button>
+            <button class="filter-btn severity-chip" data-severity="medium" onclick="filterBySeverity('medium')">Med</button>
+            <button class="filter-btn severity-chip" data-severity="low" onclick="filterBySeverity('low')">Low</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section-Wise Findings Container -->
+    <div id="section-wise-findings-container"></div>
+  </div>
+
+  <!-- Empty state if no review yet -->
+  <div id="review-empty-state" class="card" style="display: {% if not latest_review %}block{% else %}none{% endif %}; text-align: center; padding: 3rem 1.5rem;">
+    <div style="width: 40px; height: 40px; margin: 0 auto 0.85rem auto; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--surface-alt); border: 1px solid var(--border); color: var(--text);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+    </div>
+    <h3 style="margin-bottom: 0.35rem; font-size: 1.15rem;">No Architecture Review Generated Yet</h3>
+    <p class="text-muted text-sm" style="max-width: 500px; margin: 0 auto 1.25rem auto;">
+      Run an architecture review to evaluate circular imports, complexity hotspots, and prioritized refactoring opportunities across all modules.
+    </p>
+    <button class="btn btn-primary" onclick="triggerReview()">
+      Run Architecture Review Now
+    </button>
+  </div>
+</div>
+
+<!-- TAB 2: CHANGE PLANNER -->
+<div id="tab-planner" class="tab-pane" style="display: none;">
+  <div class="card" style="margin-bottom: 1.25rem;">
+    <h2 class="card-title">Architectural Change Impact Planner</h2>
+    <p class="text-muted text-sm" style="margin-bottom: 1rem;">
+      Propose a code modification or structural refactoring. ProjectDNA simulates the change against static import digraphs to predict impacted components, implementation sequences, and required regression tests.
+    </p>
+
+    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+      <label for="input-proposed-change" style="font-weight: 500; font-size: 0.8125rem;">Proposed Codebase Change:</label>
+      <input type="text" id="input-proposed-change" class="input"
+             placeholder="e.g. Separate the authentication logic from the user service" />
+
+      <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+        <span style="font-size: 0.72rem; color: var(--text-muted);">Quick Templates:</span>
+        <button type="button" class="btn-b2b-secondary btn-sm" onclick="fillChangeInput('Separate the authentication logic from the user service.')">
+          Separate Auth from User
+        </button>
+        <button type="button" class="btn-b2b-secondary btn-sm" onclick="fillChangeInput('Extract database access logic into a dedicated repository layer.')">
+          Extract Repository Layer
+        </button>
+        <button type="button" class="btn-b2b-secondary btn-sm" onclick="fillChangeInput('Decouple high-centrality hub modules to break circular dependencies.')">
+          Decouple Hub Modules
+        </button>
+      </div>
+
+      <div style="margin-top: 0.5rem;">
+        <button id="btn-run-plan" class="btn btn-primary" onclick="triggerPlan()">
+          <span id="btn-plan-spinner" style="display: none; margin-right: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          </span>
+          Generate Change Plan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Plan Result Card -->
+  <div id="plan-result-card" class="card animate-enter" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
+      <h3 style="font-size: 1rem; font-weight: 600; margin: 0;">Impact Assessment &amp; Implementation Plan</h3>
+      <span class="badge badge-info" id="plan-provider-badge">Local Engine</span>
+    </div>
+
+    <p id="plan-summary-text" style="font-size: 0.875rem; margin-bottom: 1rem; color: var(--text);"></p>
+
+    <!-- Affected Files & Paths Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+      <div style="background: var(--surface-alt); padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+        <strong style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Impacted Components &amp; Files:</strong>
+        <ul id="plan-affected-files" style="margin: 0.4rem 0 0 1.2rem; font-family: var(--font-mono); font-size: 0.8125rem;"></ul>
+      </div>
+      <div style="background: var(--surface-alt); padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+        <strong style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Dependency Impact Paths:</strong>
+        <ul id="plan-dependency-paths" style="margin: 0.4rem 0 0 1.2rem; font-size: 0.8125rem;"></ul>
+      </div>
+    </div>
+
+    <!-- Implementation Sequence Timeline -->
+    <div style="margin-bottom: 1.25rem;">
+      <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; letter-spacing: 0.05em;">
+        Recommended Implementation Sequence:
+      </h4>
+      <ul id="plan-sequence-list" style="list-style: decimal; padding-left: 1.25rem; font-size: 0.8125rem; line-height: 1.8;"></ul>
+    </div>
+
+    <!-- Risks, Tests Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+      <div style="background: var(--surface-alt); padding: 0.65rem 0.95rem; border-radius: var(--radius-sm); border: 1px solid var(--border); border-left: 3px solid var(--orange);">
+        <strong style="color: var(--orange); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;">Potential Risks:</strong>
+        <ul id="plan-risks-list" style="margin: 0.3rem 0 0 1.2rem; font-size: 0.8125rem;"></ul>
+      </div>
+      <div style="background: var(--surface-alt); padding: 0.65rem 0.95rem; border-radius: var(--radius-sm); border: 1px solid var(--border); border-left: 3px solid var(--green);">
+        <strong style="color: var(--green); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;">Validation Tests:</strong>
+        <ul id="plan-tests-list" style="margin: 0.3rem 0 0 1.2rem; font-size: 0.8125rem;"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: ASK PROJECTDNA -->
+<div id="tab-ask" class="tab-pane" style="display: none;">
+  <div class="card" style="margin-bottom: 1.25rem;">
+    <h2 class="card-title">Architecture Q&amp;A Assistant</h2>
+    <p class="text-muted text-sm" style="margin-bottom: 1rem;">
+      Inquire about specific design metrics, circular chains, or structural properties. Responses are strictly grounded in measured AST metrics and issue facts.
+    </p>
+
+    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <input type="text" id="input-ask-question" class="input"
+               placeholder="e.g. Which modules participate in a dependency cycle?" style="flex: 1; min-width: 280px;" />
+        <button id="btn-run-ask" class="btn btn-primary" onclick="triggerAsk()">
+          <span id="btn-ask-spinner" style="display: none; margin-right: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          </span>
+          Ask Question
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 0.72rem; color: var(--text-muted);">Quick Queries:</span>
+        <button type="button" class="btn-b2b-secondary btn-sm" onclick="fillAskAndSubmit('Which modules participate in a dependency cycle?')">
+          Circular Imports?
+        </button>
+        <button type="button" class="btn-b2b-secondary btn-sm" onclick="fillAskAndSubmit('What are the top 5 most complex functions or methods?')">
+          Complexity Hotspots?
+        </button>
+        <button type="button" class="btn-b2b-secondary btn-sm" onclick="fillAskAndSubmit('Which modules act as central hub components?')">
+          Coupled Hub Modules?
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Q&A Answer Card -->
+  <div id="ask-result-card" class="card animate-enter" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+      <h3 style="font-size: 1rem; font-weight: 600; margin: 0;" id="ask-question-title">Answer</h3>
+      <span class="badge badge-info" id="ask-grounded-badge">Grounded in Static Facts</span>
+    </div>
+
+    <div id="ask-answer-body" style="font-size: 0.875rem; line-height: 1.6; margin-bottom: 1rem; background: var(--surface-alt); padding: 0.85rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border); color: var(--text);"></div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; font-size: 0.8125rem;">
+      <div>
+        <strong style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Verified Facts Used:</strong>
+        <ul id="ask-grounded-facts" style="margin: 0.3rem 0 0 1.2rem;"></ul>
+      </div>
+      <div>
+        <strong style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Evidence Sources:</strong>
+        <ul id="ask-evidence-sources" style="margin: 0.3rem 0 0 1.2rem;"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const analysisId = {{ record.id }};
+const initialReviewData = {{ latest_review | tojson if latest_review else 'null' }};
+
+let currentReview = initialReviewData;
+let activeGroupMode = 'category';
+let activeSeverityFilter = 'all';
+let activeSearchQuery = '';
+
+// --- Tab Switching ---
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-pane').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.section-tab-btn').forEach(btn => btn.classList.remove('active'));
+
+  const activePane = document.getElementById(tabId);
+  if (activePane) activePane.style.display = 'block';
+
+  const activeBtn = document.querySelector(`.section-tab-btn[data-tab="${tabId}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+}
+
+// --- Grouping Mode ---
+function setGroupMode(mode) {
+  activeGroupMode = mode;
+  document.querySelectorAll('.group-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  renderSectionWiseFindings();
+}
+
+// --- Severity Filter ---
+function filterBySeverity(severity) {
+  activeSeverityFilter = severity;
+  document.querySelectorAll('.severity-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.severity === severity);
+  });
+  renderSectionWiseFindings();
+}
+
+// --- Render Section-Wise Findings ---
+function renderSectionWiseFindings() {
+  const container = document.getElementById('section-wise-findings-container');
+  if (!container) return;
+
+  const findings = currentReview ? (currentReview.findings || []) : [];
+  if (!findings || findings.length === 0) {
+    container.innerHTML = `
+      <div class="card" style="text-align: center; padding: 2rem;">
+        <p class="text-muted" style="margin: 0;">No findings recorded in this review.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const filtered = findings.filter(f => {
+    const matchSev = (activeSeverityFilter === 'all' || f.severity === activeSeverityFilter);
+    const searchTarget = `${f.title} ${f.explanation} ${f.category} ${(f.source_locations || []).map(l => l.file).join(' ')}`.toLowerCase();
+    const matchSearch = !activeSearchQuery || searchTarget.includes(activeSearchQuery);
+    return matchSev && matchSearch;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="card empty-state">
+        <p style="margin: 0;">No findings match the current filter criteria.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const groups = [];
+
+  if (activeGroupMode === 'category') {
+    const categoryConfigs = [
+      { key: 'complexity',  title: 'Complexity Hotspots', desc: 'High cyclomatic complexity modules and god-functions.' },
+      { key: 'coupling',    title: 'Coupling & Cycles',   desc: 'Circular import cycles, high fan-out, and central hub entanglement.' },
+      { key: 'reliability', title: 'Architecture Smells', desc: 'Layer leaks, missing tests, and dead modules.' },
+      { key: 'other',       title: 'General Findings',    desc: 'Documentation, style, and packaging notes.' }
+    ];
+
+    categoryConfigs.forEach(cfg => {
+      const items = filtered.filter(f => cfg.key === 'other' ? !['complexity', 'coupling', 'reliability'].includes(f.category) : f.category === cfg.key);
+      if (items.length > 0) {
+        groups.push({ id: `cat-${cfg.key}`, title: cfg.title, desc: cfg.desc, items: items });
+      }
+    });
+
+  } else if (activeGroupMode === 'severity') {
+    const sevConfigs = [
+      { key: 'critical', title: 'Critical Architectural Defects' },
+      { key: 'high',     title: 'High Priority Refactorings' },
+      { key: 'medium',   title: 'Medium Maintainability Tasks' },
+      { key: 'low',      title: 'Low / Minor Improvements' }
+    ];
+
+    sevConfigs.forEach(cfg => {
+      const items = filtered.filter(f => f.severity === cfg.key);
+      if (items.length > 0) {
+        groups.push({ id: `sev-${cfg.key}`, title: cfg.title, desc: '', items: items });
+      }
+    });
+
+  } else if (activeGroupMode === 'file') {
+    const fileMap = {};
+    filtered.forEach(f => {
+      const firstLoc = (f.source_locations && f.source_locations[0]) ? f.source_locations[0].file : 'General / Multi-Module';
+      if (!fileMap[firstLoc]) fileMap[firstLoc] = [];
+      fileMap[firstLoc].push(f);
+    });
+
+    Object.keys(fileMap).sort().forEach((file, idx) => {
+      groups.push({ id: `file-${idx}`, title: file, desc: `Findings localized to ${file}`, items: fileMap[file] });
+    });
+  }
+
+  let html = '';
+  groups.forEach((grp, idx) => {
+    html += `
+      <div class="card animate-enter" style="margin-bottom: 1rem;">
+        <div class="card-header-row">
+          <div>
+            <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">${grp.title}</h3>
+            ${grp.desc ? `<p class="text-xs text-muted" style="margin: 0.15rem 0 0 0;">${grp.desc}</p>` : ''}
+          </div>
+          <span class="badge" style="font-family: var(--font-mono);">${grp.items.length}</span>
+        </div>
+        <div>
+          ${grp.items.map(f => renderSingleFindingCard(f)).join('')}
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+// --- Render Single Finding Card ---
+function renderSingleFindingCard(f) {
+  let sevBadge = `<span class="badge badge-${f.severity}">${f.severity}</span>`;
+
+  let originHtml = '';
+  if (f.origin === 'static_rule') {
+    originHtml = '<span class="badge badge-ok">Deterministic AST Fact</span>';
+  } else if (f.origin === 'combined') {
+    originHtml = '<span class="badge badge-info">Verified Synthesis</span>';
+  } else {
+    originHtml = '<span class="badge">Inferred Recommendation</span>';
+  }
+
+  let locsHtml = '';
+  (f.source_locations || []).forEach(loc => {
+    const locStr = `${loc.file}${loc.line ? ':' + loc.line : ''}`;
+    locsHtml += `
+      <span class="mono text-xs" style="display: inline-flex; align-items: center; gap: 0.35rem; background: var(--surface-alt); padding: 0.15rem 0.5rem; border-radius: var(--radius-xs); border: 1px solid var(--border);">
+        <span>${locStr}</span>
+        <button type="button" class="btn-copy" onclick="copyTextToClipboard('${locStr}', 'Path', this)" title="Copy path">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        </button>
+      </span>
+    `;
+  });
+
+  let evidenceHtml = '';
+  if (f.evidence && f.evidence.length > 0) {
+    evidenceHtml = `
+      <div style="background: var(--surface-alt); padding: 0.5rem 0.75rem; border-radius: var(--radius-xs); margin-bottom: 0.65rem; font-size: 0.8125rem; border: 1px solid var(--border-light);">
+        <strong style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Observed Evidence:</strong>
+        <ul style="margin: 0.25rem 0 0 1.25rem; font-family: var(--font-mono); font-size: 0.78rem;">
+          ${f.evidence.map(e => `<li>${e}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="finding-card" style="margin-bottom: 0.75rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
+            ${sevBadge}
+            <span class="badge">${f.category}</span>
+            ${originHtml}
+            <span class="mono text-muted text-xs">#${f.id}</span>
+          </div>
+          <h4 style="font-size: 0.95rem; font-weight: 600; margin: 0; color: var(--text);">${f.title}</h4>
+        </div>
+        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${locsHtml}</div>
+      </div>
+
+      ${evidenceHtml}
+
+      <div style="margin-bottom: 0.5rem; font-size: 0.8125rem; line-height: 1.5; color: var(--text);">
+        <strong>Why This Matters:</strong> ${f.explanation}
+      </div>
+
+      <div style="background: var(--surface-alt); border-left: 3px solid var(--accent); padding: 0.55rem 0.85rem; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; margin-bottom: 0.5rem; font-size: 0.8125rem;">
+        <strong style="font-size: 0.72rem; text-transform: uppercase; color: var(--accent);">Recommended Next Action:</strong>
+        <div style="margin-top: 0.2rem; color: var(--text);">${f.recommendation}</div>
+      </div>
+    </div>
+  `;
+}
+
+// --- Render Full Review ---
+function renderReview(review) {
+  if (!review) return;
+  currentReview = review;
+
+  const provBadge = document.getElementById('provenance-badge');
+  const noticeBar = document.getElementById('status-notice-bar');
+  const noticeText = document.getElementById('status-notice-text');
+
+  if (review.provider === 'combined') {
+    provBadge.textContent = 'Combined Review (Groq + Static)';
+    provBadge.className = 'badge badge-info';
+  } else if (review.provider === 'groq') {
+    provBadge.textContent = 'Groq-Assisted Review';
+    provBadge.className = 'badge badge-info';
+  } else {
+    provBadge.textContent = 'Local Static Analysis';
+    provBadge.className = 'badge';
+  }
+
+  if (review.status === 'fallback_local' && review.status_message) {
+    noticeBar.style.display = 'block';
+    noticeText.textContent = review.status_message;
+  } else {
+    noticeBar.style.display = 'none';
+  }
+
+  document.getElementById('review-summary-text').textContent = review.review_summary || '';
+  const overviewEl = document.getElementById('review-overview-text');
+  if (overviewEl && review.architecture_overview) {
+    overviewEl.textContent = review.architecture_overview;
+  }
+
+  const findings = review.findings || [];
+  document.getElementById('findings-count-badge').textContent = findings.length;
+
+  const critCount = findings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
+  const compCount = findings.filter(f => f.category === 'complexity').length;
+  const couplingCount = findings.filter(f => f.category === 'coupling').length;
+  const relCount = findings.filter(f => ['reliability', 'security'].includes(f.category)).length;
+
+  const vCrit = document.getElementById('vital-crit-val');
+  const vComp = document.getElementById('vital-comp-val');
+  const vCoupling = document.getElementById('vital-coupling-val');
+  const vRel = document.getElementById('vital-rel-val');
+
+  if (vCrit) vCrit.textContent = critCount;
+  if (vComp) vComp.textContent = compCount;
+  if (vCoupling) vCoupling.textContent = couplingCount;
+  if (vRel) vRel.textContent = relCount;
+
+  renderSectionWiseFindings();
+
+  document.getElementById('review-content').style.display = 'block';
+  document.getElementById('review-empty-state').style.display = 'none';
+}
+
+// --- Trigger Review Handler ---
+async function triggerReview() {
+  const mode = document.getElementById('review-mode-select').value;
+  const btn = document.getElementById('btn-run-review');
+  const spinner = document.getElementById('btn-review-spinner');
+  const btnText = document.getElementById('btn-review-text');
+
+  btn.disabled = true;
+  spinner.style.display = 'inline';
+  btnText.textContent = 'Analyzing…';
+
+  document.getElementById('review-empty-state').style.display = 'none';
+  document.getElementById('review-content').style.display = 'none';
+  document.getElementById('review-loading').style.display = 'block';
+
+  try {
+    const res = await fetch(`/api/ai-review/${analysisId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode })
+    });
+    const data = await res.json();
+    renderReview(data);
+    showToast('Architecture review completed', 'success');
+  } catch (err) {
+    showToast('Review request failed: ' + err, 'error');
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = 'Run Architecture Review';
+    document.getElementById('review-loading').style.display = 'none';
+  }
+}
+
+// --- Change Planner Handlers ---
+function fillChangeInput(text) {
+  document.getElementById('input-proposed-change').value = text;
+}
+
+async function triggerPlan() {
+  const input = document.getElementById('input-proposed-change');
+  const val = input.value.trim();
+  if (!val) {
+    showToast('Please enter a proposed change description.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-run-plan');
+  const spinner = document.getElementById('btn-plan-spinner');
+  btn.disabled = true;
+  spinner.style.display = 'inline';
+
+  try {
+    const res = await fetch(`/api/ai-plan/${analysisId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposed_change: val })
+    });
+    const plan = await res.json();
+
+    document.getElementById('plan-result-card').style.display = 'block';
+    document.getElementById('plan-summary-text').textContent = plan.summary || '';
+    document.getElementById('plan-provider-badge').textContent = plan.provider === 'groq' ? 'Groq AI Plan' : 'Local Graph Plan';
+
+    const affList = document.getElementById('plan-affected-files');
+    affList.innerHTML = (plan.affected_files || []).map(f => `<li>${f}</li>`).join('') || '<li>None identified</li>';
+
+    const pathsList = document.getElementById('plan-dependency-paths');
+    pathsList.innerHTML = (plan.dependency_paths || []).map(p => `<li>${p}</li>`).join('') || '<li>Direct modifications only</li>';
+
+    const seqList = document.getElementById('plan-sequence-list');
+    seqList.innerHTML = (plan.implementation_sequence || []).map(s => `<li>${s}</li>`).join('') || '<li>No steps generated</li>';
+
+    const risksList = document.getElementById('plan-risks-list');
+    risksList.innerHTML = (plan.potential_risks || []).map(r => `<li>${r}</li>`).join('') || '<li>Standard regression risk</li>';
+
+    const testsList = document.getElementById('plan-tests-list');
+    testsList.innerHTML = (plan.recommended_tests || []).map(t => `<li>${t}</li>`).join('') || '<li>Run test suite</li>';
+
+    showToast('Change Plan calculated', 'success');
+  } catch (err) {
+    showToast('Change planning failed: ' + err, 'error');
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+// --- Ask ProjectDNA Handlers ---
+function fillAskAndSubmit(text) {
+  document.getElementById('input-ask-question').value = text;
+  triggerAsk();
+}
+
+async function triggerAsk() {
+  const input = document.getElementById('input-ask-question');
+  const q = input.value.trim();
+  if (!q) {
+    showToast('Please enter a question to ask.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-run-ask');
+  const spinner = document.getElementById('btn-ask-spinner');
+  btn.disabled = true;
+  spinner.style.display = 'inline';
+
+  try {
+    const res = await fetch(`/api/ai-ask/${analysisId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q })
+    });
+    const ans = await res.json();
+
+    document.getElementById('ask-result-card').style.display = 'block';
+    document.getElementById('ask-question-title').textContent = `Q: ${ans.question}`;
+    document.getElementById('ask-answer-body').textContent = ans.answer || 'No answer available.';
+
+    const groundedBadge = document.getElementById('ask-grounded-badge');
+    if (ans.is_grounded) {
+      groundedBadge.className = 'badge badge-ok';
+      groundedBadge.textContent = 'Grounded in Static Facts';
+    } else {
+      groundedBadge.className = 'badge badge-warning';
+      groundedBadge.textContent = 'Limited Context Available';
+    }
+
+    const factsList = document.getElementById('ask-grounded-facts');
+    factsList.innerHTML = (ans.grounded_facts || []).map(f => `<li>${f}</li>`).join('') || '<li>None cited</li>';
+
+    const sourcesList = document.getElementById('ask-evidence-sources');
+    sourcesList.innerHTML = (ans.evidence_sources || []).map(s => `<li>${s}</li>`).join('') || '<li>Project static model</li>';
+
+    showToast('Answer retrieved', 'info');
+  } catch (err) {
+    showToast('Question answering failed: ' + err, 'error');
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+// --- Search Filter Listener ---
+const searchInput = document.getElementById('findings-search-input');
+if (searchInput) {
+  searchInput.addEventListener('input', function() {
+    activeSearchQuery = (this.value || '').toLowerCase().trim();
+    renderSectionWiseFindings();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  if (initialReviewData) {
+    renderReview(initialReviewData);
+  }
+});
+</script>
+{% endblock %}

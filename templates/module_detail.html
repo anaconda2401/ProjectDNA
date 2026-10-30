@@ -2,151 +2,340 @@
 {% block title %}{{ module.path }} — {{ record.project_name }}{% endblock %}
 
 {% block content %}
-<div class="page-header page-header-sub">
-  <div class="breadcrumb">
-    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">{{ record.project_name }}</a>
-    › <a href="{{ url_for('modules', analysis_id=record.id) }}">Files</a>
-    › {{ module.path }}
+{% set active_nav = 'modules' %}
+{% include 'components/project_subnav.html' %}
+
+<div class="animate-enter" style="margin-bottom: 1.25rem;">
+  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+    <a href="{{ url_for('modules', analysis_id=record.id) }}" class="btn-link" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m15 18-6-6 6-6"/></svg>
+      <span>All Files</span>
+    </a>
+    <span class="text-muted">/</span>
+    <span class="mono text-sm" style="color: var(--accent); font-weight: 500;">{{ module.path }}</span>
   </div>
-  <h1 class="mono">{{ module.path }}</h1>
-  <p class="page-sub">
-    Module: <code class="mono">{{ module.module_name }}</code>
-    &nbsp;·&nbsp; Layer: <span class="layer-tag layer-{{ module.layer }}">{{ module.layer }}</span>
-    &nbsp;·&nbsp; {{ module.lines }} lines
-    &nbsp;·&nbsp; Complexity: {{ module.complexity }}
-  </p>
+
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+        <h1 class="mono" style="font-size: 1.35rem; font-weight: 600; margin: 0; word-break: break-all;">
+          {{ module.path }}
+        </h1>
+        <button 
+          class="btn-copy" 
+          title="Copy file path" 
+          onclick="copyTextToClipboard('{{ module.path }}', 'Path', this)"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        </button>
+      </div>
+      <p style="margin: 0; display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; font-size: 0.8125rem;">
+        <span>Module: <code class="mono">{{ module.module_name }}</code></span>
+        <span>&bull;</span>
+        <span>Layer: <span class="layer-tag">{{ module.layer }}</span></span>
+        <span>&bull;</span>
+        <span>Complexity: 
+          <span class="complexity-badge complexity-{{ 'high' if module.complexity >= 20 else 'med' if module.complexity >= 8 else 'low' }}">
+            {{ module.complexity }}
+          </span>
+        </span>
+      </p>
+    </div>
+
+    <!-- Quick Action Bar -->
+    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+      <a href="{{ url_for('impact_view', analysis_id=record.id, target=module.module_name) }}" class="btn-b2b-primary btn-sm">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span>Change Impact</span>
+      </a>
+      <a href="{{ url_for('ai_architect_view', analysis_id=record.id) }}" class="btn-b2b-secondary btn-sm">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+        <span>AI Architect</span>
+      </a>
+      <a href="{{ url_for('modules', analysis_id=record.id) }}" class="btn-b2b-secondary btn-sm">
+        <span>All Files</span>
+      </a>
+    </div>
+  </div>
 </div>
 
 {% if module.parse_error %}
-<div class="alert alert-error">
-  <strong>Parse Error:</strong> {{ module.parse_error }}
+<div class="flash flash-error animate-enter" style="margin-bottom: 1.25rem;">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+  <div>
+    <strong>AST Parse Warning / Error</strong>
+    <p class="mono text-xs" style="margin: 0.2rem 0 0 0;">{{ module.parse_error }}</p>
+  </div>
 </div>
 {% endif %}
 
-<div class="detail-grid">
-
-  <!-- Imports -->
-  <div class="card">
-    <h2 class="card-title">Imports ({{ module.imports|length }})</h2>
-    {% if module.imports %}
-    <table class="table">
-      <thead><tr><th>Module</th><th>Names</th><th>Type</th><th>Line</th></tr></thead>
-      <tbody>
-        {% for imp in module.imports %}
-        <tr>
-          <td class="mono text-sm">{{ imp.module }}</td>
-          <td class="mono text-sm text-muted">{{ imp.names | join(', ') or '—' }}</td>
-          <td class="text-sm">{{ 'from' if imp.is_from else 'import' }}</td>
-          <td class="text-right text-muted">{{ imp.line }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="empty-state">No imports</p>
-    {% endif %}
+<!-- Key Metrics Grid -->
+<div class="metrics-panel grid-cols-5 animate-enter" style="margin-bottom: 1.5rem;">
+  <div class="metric-card">
+    <div class="metric-stat">{{ "{:,}".format(module.lines) }}</div>
+    <div class="metric-label">Total Lines</div>
   </div>
+  <div class="metric-card">
+    <div class="metric-stat {% if module.complexity >= 20 %}text-warning{% endif %}">{{ module.complexity }}</div>
+    <div class="metric-label">Complexity</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-stat">{{ module.classes | length }}</div>
+    <div class="metric-label">Classes</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-stat">{{ module.functions | length }}</div>
+    <div class="metric-label">Top-Level Fns</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-stat">{{ module.imports | length }}</div>
+    <div class="metric-label">Direct Imports</div>
+  </div>
+</div>
 
-  <!-- Dependents -->
-  <div class="card">
-    <h2 class="card-title">Dependency Relationships</h2>
-    <div class="dep-columns">
-      <div>
-        <h3 class="sub-heading">Imported by</h3>
+<div class="detail-grid animate-enter">
+
+  <!-- Dependency Relationships Card -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-header-row">
+      <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">
+        Dependency Matrix for <code>{{ module.module_name }}</code>
+      </h2>
+      <a href="{{ url_for('impact_view', analysis_id=record.id, target=module.module_name) }}" class="btn-b2b-secondary btn-sm">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="margin-right:2px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span>Blast Radius &rarr;</span>
+      </a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-top: 0.75rem;">
+      <!-- Imported By (Dependents) -->
+      <div style="background: var(--surface-alt); padding: 0.85rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+          <strong style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Imported By (Dependents)</strong>
+          <span class="badge badge-info">{{ imported_by | length }}</span>
+        </div>
+        <p class="text-xs text-muted" style="margin-bottom: 0.65rem;">
+          Modules that rely on this module. Changes here directly affect these consumers:
+        </p>
         {% if imported_by %}
-          <ul class="dep-list">
+          <div style="display: flex; flex-wrap: wrap; gap: 0.35rem;">
             {% for m in imported_by %}
-            <li class="mono text-sm">{{ m }}</li>
+            <a href="{{ url_for('impact_view', analysis_id=record.id, target=m) }}" 
+               class="badge" 
+               style="font-family: var(--font-mono); text-decoration: none;"
+               title="Analyze {{ m }}">
+              {{ m }}
+            </a>
             {% endfor %}
-          </ul>
+          </div>
         {% else %}
-          <p class="text-muted text-sm">Not imported by any project module</p>
+          <p class="text-muted text-xs" style="font-style: italic;">No other project modules import this module directly.</p>
         {% endif %}
       </div>
-      <div>
-        <h3 class="sub-heading">Imports from project</h3>
+
+      <!-- Imports From (Dependencies) -->
+      <div style="background: var(--surface-alt); padding: 0.85rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+          <strong style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Imports From (Dependencies)</strong>
+          <span class="badge">{{ imports_to | length }}</span>
+        </div>
+        <p class="text-xs text-muted" style="margin-bottom: 0.65rem;">
+          Internal modules this file imports. Breaking changes in these could affect this module:
+        </p>
         {% if imports_to %}
-          <ul class="dep-list">
+          <div style="display: flex; flex-wrap: wrap; gap: 0.35rem;">
             {% for m in imports_to %}
-            <li class="mono text-sm">{{ m }}</li>
+            <a href="{{ url_for('impact_view', analysis_id=record.id, target=m) }}" 
+               class="badge" 
+               style="font-family: var(--font-mono); text-decoration: none;"
+               title="Analyze {{ m }}">
+              {{ m }}
+            </a>
             {% endfor %}
-          </ul>
+          </div>
         {% else %}
-          <p class="text-muted text-sm">No project imports</p>
+          <p class="text-muted text-xs" style="font-style: italic;">Does not import any internal project modules.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- Classes -->
+  <!-- Classes Card -->
   <div class="card">
-    <h2 class="card-title">Classes ({{ module.classes|length }})</h2>
+    <h2 class="card-title">
+      Defined Classes ({{ module.classes|length }})
+    </h2>
     {% if module.classes %}
       {% for cls in module.classes %}
-      <div class="class-block">
-        <div class="class-header">
-          <span class="class-keyword">class</span>
-          <span class="class-name">{{ cls.name }}</span>
-          {% if cls.bases %}
-            <span class="class-bases">({{ cls.bases | join(', ') }})</span>
-          {% endif %}
-          <span class="class-lines text-muted text-sm">line {{ cls.lineno }}–{{ cls.end_lineno }}</span>
+      <div style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 0.75rem; background: var(--surface-alt);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.35rem;">
+          <div>
+            <span class="mono" style="color: var(--accent); font-weight: 600;">class</span>
+            <strong class="mono" style="font-size: 0.95rem; color: var(--text);">{{ cls.name }}</strong>
+            {% if cls.bases %}
+              <span class="mono text-muted text-xs">({{ cls.bases | join(', ') }})</span>
+            {% endif %}
+          </div>
+          <span class="text-muted text-xs mono">
+            lines {{ cls.lineno }}–{{ cls.end_lineno }}
+          </span>
         </div>
+
         {% if cls.docstring %}
-        <p class="class-doc text-sm text-muted">{{ cls.docstring | truncate(180) }}</p>
+        <p class="text-xs text-muted" style="background: var(--surface); padding: 0.4rem 0.65rem; border-radius: var(--radius-xs); border: 1px solid var(--border-light); margin: 0.4rem 0;">
+          {{ cls.docstring | truncate(200) }}
+        </p>
         {% endif %}
+
         {% if cls.methods %}
-        <table class="table table-sm">
-          <thead><tr><th>Method</th><th>Args</th><th>Lines</th><th>Complexity</th></tr></thead>
-          <tbody>
-            {% for m in cls.methods %}
-            <tr>
-              <td class="mono text-sm">{{ m.name }}</td>
-              <td class="mono text-sm text-muted">{{ m.args | join(', ') }}</td>
-              <td class="text-right text-sm">{{ m.lineno }}–{{ m.end_lineno }}</td>
-              <td class="text-right">
-                <span class="complexity-badge complexity-{{ 'high' if m.complexity >= 10 else 'med' if m.complexity >= 5 else 'low' }}">
-                  {{ m.complexity }}
-                </span>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div style="margin-top: 0.65rem;">
+          <h4 style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.35rem;">
+            Methods ({{ cls.methods|length }})
+          </h4>
+          <table class="table" style="background: var(--surface);">
+            <thead>
+              <tr>
+                <th>Method Name</th>
+                <th>Arguments</th>
+                <th class="text-right">Lines</th>
+                <th class="text-right">Complexity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in cls.methods %}
+              <tr>
+                <td class="mono text-sm" style="font-weight: 500;">
+                  <code>{{ m.name }}</code>
+                </td>
+                <td class="mono text-xs text-muted">({{ m.args | join(', ') }})</td>
+                <td class="text-right text-xs text-muted mono">{{ m.lineno }}–{{ m.end_lineno }}</td>
+                <td class="text-right">
+                  <span class="complexity-badge complexity-{{ 'high' if m.complexity >= 10 else 'med' if m.complexity >= 5 else 'low' }}">
+                    {{ m.complexity }}
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% endif %}
       </div>
       {% endfor %}
     {% else %}
-      <p class="empty-state">No classes</p>
+      <p class="empty-state">No class definitions found in this module.</p>
     {% endif %}
   </div>
 
-  <!-- Top-level Functions -->
+  <!-- Top-level Functions Card -->
   <div class="card">
-    <h2 class="card-title">Top-level Functions ({{ module.functions|length }})</h2>
+    <h2 class="card-title">
+      Top-Level Functions ({{ module.functions|length }})
+    </h2>
     {% if module.functions %}
-    <table class="table">
-      <thead><tr><th>Name</th><th>Args</th><th>Lines</th><th>Complexity</th><th>Calls</th></tr></thead>
-      <tbody>
-        {% for fn in module.functions %}
-        <tr>
-          <td class="mono text-sm">{{ fn.name }}</td>
-          <td class="mono text-sm text-muted">{{ fn.args | join(', ') }}</td>
-          <td class="text-right text-sm">{{ fn.lineno }}–{{ fn.end_lineno }}</td>
-          <td class="text-right">
-            <span class="complexity-badge complexity-{{ 'high' if fn.complexity >= 10 else 'med' if fn.complexity >= 5 else 'low' }}">
-              {{ fn.complexity }}
-            </span>
-          </td>
-          <td class="text-sm text-muted mono">{{ fn.calls[:4] | join(', ') }}{% if fn.calls|length > 4 %}…{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Function</th>
+            <th>Parameters</th>
+            <th class="text-right">Lines</th>
+            <th class="text-right">Complexity</th>
+            <th>Calls</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fn in module.functions %}
+          <tr>
+            <td class="mono text-sm" style="font-weight: 500;">
+              <code>{{ fn.name }}</code>
+            </td>
+            <td class="mono text-xs text-muted">({{ fn.args | join(', ') }})</td>
+            <td class="text-right text-xs text-muted mono">{{ fn.lineno }}–{{ fn.end_lineno }}</td>
+            <td class="text-right">
+              <span class="complexity-badge complexity-{{ 'high' if fn.complexity >= 10 else 'med' if fn.complexity >= 5 else 'low' }}">
+                {{ fn.complexity }}
+              </span>
+            </td>
+            <td class="text-xs text-muted mono">
+              {% if fn.calls %}
+                {{ fn.calls[:3] | join(', ') }}{% if fn.calls|length > 3 %}…{% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-      <p class="empty-state">No top-level functions</p>
+      <p class="empty-state">No standalone top-level functions defined.</p>
+    {% endif %}
+  </div>
+
+  <!-- Imports Card -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-header-row">
+      <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">
+        Declared Imports ({{ module.imports|length }})
+      </h2>
+      <input 
+        type="text" 
+        id="import-search" 
+        class="input input-sm" 
+        placeholder="Filter imports…" 
+        style="width: 200px;"
+      />
+    </div>
+    {% if module.imports %}
+    <div style="overflow-x: auto;">
+      <table class="table" id="imports-table">
+        <thead>
+          <tr>
+            <th>Imported Module</th>
+            <th>Specific Names</th>
+            <th>Type</th>
+            <th class="text-right">Line</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for imp in module.imports %}
+          <tr class="import-row" data-search="{{ imp.module }} {{ imp.names | join(' ') }}">
+            <td class="mono text-sm" style="font-weight: 500;">
+              <code>{{ imp.module }}</code>
+            </td>
+            <td class="mono text-xs text-muted">{{ imp.names | join(', ') or '—' }}</td>
+            <td class="text-sm">
+              <span class="badge" style="font-size: 0.7rem;">
+                {{ 'from ... import' if imp.is_from else 'import' }}
+              </span>
+            </td>
+            <td class="text-right text-muted mono text-xs">{{ imp.line }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-state">No imports declared in this file.</p>
     {% endif %}
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const importSearch = document.getElementById('import-search');
+  if (importSearch) {
+    importSearch.addEventListener('input', function() {
+      const q = (this.value || '').toLowerCase().trim();
+      document.querySelectorAll('.import-row').forEach(row => {
+        const text = (row.dataset.search || '').toLowerCase();
+        row.style.display = (!q || text.includes(q)) ? '' : 'none';
+      });
+    });
+  }
+</script>
 {% endblock %}

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Architecture Risks — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+{% set active_nav = 'risks' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 0.2rem 0; letter-spacing: -0.02em;">Architecture Risk &amp; Technical Debt Analysis</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Deterministic heuristic risk scoring and prioritized architectural debt backlog.</p>
+  </div>
+</div>
+
+{% set pr = risk_analysis.project_risk %}
+
+<!-- Top Section: Project Heuristic Risk Score Card -->
+<div class="card animate-enter" style="margin-bottom: 1.25rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.75rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.35rem;">
+        <span class="badge badge-{% if pr.risk_level == 'CRITICAL' %}critical{% elif pr.risk_level == 'HIGH' %}high{% elif pr.risk_level == 'MEDIUM' %}medium{% else %}low{% endif %}"
+              style="font-size: 0.8125rem; padding: 0.25rem 0.65rem;">
+          {{ pr.risk_level }} RISK ({{ pr.risk_score }}/100)
+        </span>
+        <span class="text-muted text-sm font-medium">Deterministic Heuristic Composite Score</span>
+      </div>
+      <p class="text-muted text-sm" style="max-width: 750px; margin: 0;">
+        Evaluates structural fragility, complexity hotspots, dependency entanglement, and test absence using normalized heuristics.
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider" style="margin: 0.75rem 0 1rem 0;" />
+
+  <!-- Factor Contributions Breakdown -->
+  <h3 style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">
+    Contributing Risk Factors Breakdown
+  </h3>
+  <div class="metrics-panel grid-cols-5 animate-enter">
+    <!-- Card 1: Cycles -->
+    <div class="metric-card">
+      <div class="metric-stat" style="color: {% if pr.factors.cycles > 0 %}var(--red){% else %}var(--green){% endif %};">
+        {{ (pr.factors.cycles * 100) | round(1) }}%
+      </div>
+      <div class="metric-label">
+        <span>Cycles ({{ (pr.weights.cycles * 100) | round }}% wt)</span>
+        <span class="stat-sublabel">{{ pr.cycles_count }} cycle(s) in project</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Complexity -->
+    <div class="metric-card">
+      <div class="metric-stat" style="color: {% if pr.factors.complexity > 0.4 %}var(--red){% elif pr.factors.complexity > 0.2 %}var(--orange){% else %}var(--green){% endif %};">
+        {{ (pr.factors.complexity * 100) | round(1) }}%
+      </div>
+      <div class="metric-label">
+        <span>Complexity ({{ (pr.weights.complexity * 100) | round }}% wt)</span>
+        <span class="stat-sublabel">{{ pr.high_complexity_modules }} high complexity file(s)</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Coupling -->
+    <div class="metric-card">
+      <div class="metric-stat" style="color: {% if pr.factors.coupling > 0.4 %}var(--orange){% else %}var(--text){% endif %};">
+        {{ (pr.factors.coupling * 100) | round(1) }}%
+      </div>
+      <div class="metric-label">
+        <span>Coupling ({{ (pr.weights.coupling * 100) | round }}% wt)</span>
+        <span class="stat-sublabel">{{ pr.hub_modules_count }} central hub module(s)</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Layer Violations -->
+    <div class="metric-card">
+      <div class="metric-stat" style="color: {% if pr.factors.layer_violations > 0 %}var(--orange){% else %}var(--green){% endif %};">
+        {{ (pr.factors.layer_violations * 100) | round(1) }}%
+      </div>
+      <div class="metric-label">
+        <span>Layer Leaks ({{ (pr.weights.layer_violations * 100) | round }}% wt)</span>
+        <span class="stat-sublabel">{{ pr.layer_violations_count }} inverted import(s)</span>
+      </div>
+    </div>
+
+    <!-- Card 5: Untested Core -->
+    <div class="metric-card">
+      <div class="metric-stat" style="color: {% if pr.factors.test_absence > 0.5 %}var(--red){% elif pr.factors.test_absence > 0.2 %}var(--orange){% else %}var(--green){% endif %};">
+        {{ (pr.factors.test_absence * 100) | round(1) }}%
+      </div>
+      <div class="metric-label">
+        <span>Untested Core ({{ (pr.weights.test_absence * 100) | round }}% wt)</span>
+        <span class="stat-sublabel">{{ pr.untested_core_modules }} core file(s) without tests</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Prioritized Component Risk Backlog -->
+<div class="card animate-enter">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+    <div>
+      <h2 class="card-title" style="margin-bottom: 0.15rem; border-bottom: none; padding-bottom: 0;">
+        Prioritized Technical Debt Backlog ({{ risk_analysis.total_risks_found }})
+      </h2>
+      <p class="text-muted text-sm" style="margin: 0;">
+        Ranked components combining complexity, fan-in/fan-out, cycles, and lack of regression tests.
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+      <span class="badge badge-critical">{{ risk_analysis.critical_count }} Critical</span>
+      <span class="badge badge-high">{{ risk_analysis.high_count }} High</span>
+      <span class="badge badge-medium">{{ risk_analysis.medium_count }} Medium</span>
+      <span class="badge badge-low">{{ risk_analysis.low_count }} Low</span>
+    </div>
+  </div>
+
+  {% if risk_analysis.prioritized_risks %}
+  <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+    {% for item in risk_analysis.prioritized_risks %}
+    <div class="finding-card" style="margin-bottom: 0;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
+            <span class="badge badge-{{ item.priority | lower }}">{{ item.priority }}</span>
+            <span class="layer-tag">{{ item.layer }}</span>
+            <span class="mono text-sm" style="font-weight: 600;">{{ item.component }}</span>
+          </div>
+          <div class="text-muted text-xs mono">
+            Location: <code>{{ item.location }}</code> &bull;
+            <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=item.path) }}" class="link-primary">Source Details →</a> &bull;
+            <a href="{{ url_for('impact_view', analysis_id=record.id, target=item.component) }}" class="link-primary">Blast Radius →</a>
+          </div>
+        </div>
+        <div>
+          <span class="mono text-sm font-semibold" style="color: {% if item.score >= 65 %}var(--red){% elif item.score >= 45 %}var(--orange){% else %}var(--text){% endif %};">
+            Score: {{ item.score }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Evidence -->
+      <div style="background: var(--surface-alt); border-radius: var(--radius-xs); padding: 0.55rem 0.75rem; font-size: 0.8125rem; margin-bottom: 0.5rem; border: 1px solid var(--border-light);">
+        <div style="margin-bottom: 0.2rem;">
+          <strong>Evidence:</strong> {{ item.evidence }}
+        </div>
+        <div class="text-muted text-xs">
+          <strong>Rule:</strong> {{ item.rule }}
+        </div>
+      </div>
+
+      <!-- Why it matters & Action -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.8125rem;" class="dep-two-col">
+        <div>
+          <strong style="color: var(--orange); font-size: 0.72rem; text-transform: uppercase;">Why This Matters:</strong>
+          <p class="text-muted" style="margin-top: 0.2rem;">{{ item.why_it_matters }}</p>
+        </div>
+        <div>
+          <strong style="color: var(--green); font-size: 0.72rem; text-transform: uppercase;">Recommended Next Action:</strong>
+          <p class="text-muted" style="margin-top: 0.2rem;">{{ item.recommended_action }}</p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-state">No elevated architectural risks detected. All components fall within safe thresholds.</p>
+  {% endif %}
+</div>
+{% endblock %}

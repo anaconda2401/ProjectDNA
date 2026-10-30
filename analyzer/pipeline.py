@@ -19,6 +19,9 @@ from .dependency_analyzer import build_graphs
 from .architecture_analyzer import build_layer_graph, _infer_layer
 from .metrics import compute_module_metrics, compute_project_summary
 from .issue_detector import detect_issues
+from .impact_analyzer import compute_all_impact_summaries
+from .module_discovery import discover_refactoring_recommendations
+from .risk_analyzer import analyze_architecture_risks
 
 # ---------------------------------------------------------------------------
 # stdlib detection
@@ -149,6 +152,17 @@ def run_pipeline(project_root: str, project_name: str) -> Dict[str, Any]:
 
     # 7. Issues
     issues = detect_issues(model, G_imports, layer_map)
+
+    # 7b. Change Impact summaries
+    impact_summaries = compute_all_impact_summaries(model, G_imports, layer_map)
+
+    # 7c. Module Discovery & Refactoring Recommendations
+    refactoring_recommendations = discover_refactoring_recommendations(model, G_imports)
+
+    # 7d. Explainable Architecture Risk & Technical Debt Analysis
+    architecture_risks = analyze_architecture_risks(
+        model, G_imports, layer_map, issues, impact_summaries
+    )
 
     elapsed = round(time.time() - t0, 2)
 
@@ -289,11 +303,14 @@ def run_pipeline(project_root: str, project_name: str) -> Dict[str, Any]:
             ],
             'parse_error': m.parse_error,
             'complexity': m.complexity,
+            'file_hash': m.file_hash,
             'layer': layer_map.get(m.module_name, 'other'),
         })
 
     return {
+        'schema_version': '2.0',
         'project_name': project_name,
+        'timestamp': time.time(),
         'elapsed': elapsed,
         'scan_warnings': scan_warnings,
         'summary': summary,
@@ -306,4 +323,7 @@ def run_pipeline(project_root: str, project_name: str) -> Dict[str, Any]:
         'graph_imports': _gdata(G_imports),
         'graph_layers': _gdata(G_layers),
         'layer_map': layer_map,
+        'impact_summaries': impact_summaries,
+        'refactoring_recommendations': refactoring_recommendations,
+        'architecture_risks': architecture_risks,
     }

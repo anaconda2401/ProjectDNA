@@ -2,48 +2,137 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ProjectDNA Report — {{ record.project_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #212529; background: #fff; padding: 2rem; }
-  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
-  h2 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 .5rem; border-bottom: 1px solid #dee2e6; padding-bottom: .3rem; }
-  h3 { font-size: .875rem; font-weight: 600; margin: 1rem 0 .3rem; }
-  p  { margin-bottom: .5rem; color: #495057; }
-  code, .mono { font-family: 'JetBrains Mono', monospace; font-size: .8em; }
-  .muted { color: #6c757d; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #09090b;
+    background: #ffffff;
+    padding: 2.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.025em; margin-bottom: 0.25rem; }
+  h2 { font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; margin: 2rem 0 0.75rem; border-bottom: 1px solid #e4e4e7; padding-bottom: 0.5rem; color: #18181b; }
+  h3 { font-size: 0.85rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #27272a; }
+  p  { margin-bottom: 0.75rem; color: #52525b; font-size: 0.85rem; }
+  code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.85em; background: #f4f4f5; padding: 0.15rem 0.35rem; border-radius: 4px; border: 1px solid #e4e4e7; color: #09090b; }
+  .muted { color: #71717a; }
 
   /* Header */
-  .report-header { border-bottom: 2px solid #212529; padding-bottom: 1rem; margin-bottom: 1.5rem; }
-  .report-meta   { font-size: .8rem; color: #6c757d; margin-top: .2rem; }
+  .report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid #e4e4e7;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.75rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .brand-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+  .brand-pill svg {
+    color: #09090b;
+  }
+  .report-meta {
+    font-size: 0.8rem;
+    color: #71717a;
+    font-family: 'JetBrains Mono', monospace;
+  }
 
   /* Stats grid */
-  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; margin-bottom: 1.5rem; }
-  .stat  { border: 1px solid #dee2e6; border-radius: 4px; padding: .5rem .75rem; }
-  .stat-val { font-size: 1.3rem; font-weight: 700; }
-  .stat-lbl { font-size: .7rem; color: #6c757d; text-transform: uppercase; letter-spacing: .04em; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+  .stat {
+    border: 1px solid #e4e4e7;
+    border-radius: 6px;
+    padding: 0.75rem 0.85rem;
+    background: #fafafa;
+  }
+  .stat-val {
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -0.02em;
+    color: #09090b;
+  }
+  .stat-lbl {
+    font-size: 0.68rem;
+    color: #71717a;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.2rem;
+  }
 
   /* Tables */
-  table  { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: .8rem; }
-  th     { text-align: left; padding: .3rem .5rem; font-size: .7rem; font-weight: 600;
-           text-transform: uppercase; letter-spacing: .04em; color: #6c757d;
-           border-bottom: 1px solid #dee2e6; white-space: nowrap; }
-  td     { padding: .3rem .5rem; border-bottom: 1px solid #f1f3f5; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  .tr    { text-align: right; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+    font-size: 0.8rem;
+  }
+  th {
+    text-align: left;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #71717a;
+    border-bottom: 1px solid #e4e4e7;
+    background: #fafafa;
+    white-space: nowrap;
+  }
+  td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid #f4f4f5;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: 1px solid #e4e4e7; }
+  .tr { text-align: right; }
 
   /* Badges */
-  .badge { display: inline-block; padding: .1rem .35rem; border-radius: 3px;
-           font-size: .65rem; font-weight: 600; text-transform: uppercase; }
-  .be { background:#fff5f5; color:#c92a2a; border:1px solid #ffc9c9; }
-  .bw { background:#fff9db; color:#e67700; border:1px solid #ffec99; }
-  .bi { background:#e7f5ff; color:#1971c2; border:1px solid #a5d8ff; }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .be { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .bw { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+  .bi { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
 
   /* Two columns */
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
 
   @media print {
-    body { padding: 1rem; }
+    body { padding: 1rem; max-width: 100%; }
     h2 { page-break-before: auto; }
     table { page-break-inside: avoid; }
   }
@@ -53,9 +142,19 @@
 {% set s = result.summary %}
 
 <div class="report-header">
-  <h1>ProjectDNA Analysis Report — {{ record.project_name }}</h1>
+  <div>
+    <div class="brand-pill">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+        <polyline points="2 17 12 22 22 17"></polyline>
+        <polyline points="2 12 12 17 22 12"></polyline>
+      </svg>
+      ProjectDNA Static Analysis
+    </div>
+    <h1>Analysis Report — {{ record.project_name }}</h1>
+  </div>
   <div class="report-meta">
-    Generated: {{ record.created_at }} &nbsp;·&nbsp; Analysis time: {{ result.elapsed }}s
+    Snapshot #{{ record.id }} &nbsp;·&nbsp; {{ record.created_at }} &nbsp;·&nbsp; {{ result.elapsed }}s
   </div>
 </div>
 

@@ -4,31 +4,32 @@
 {% block head %}
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
-  /* Scoped overrides so the graph fills the space properly */
-  .arch-graph-wrap { padding: 0 !important; position: relative; }
+  .arch-graph-wrap { padding: 0 !important; position: relative; background: var(--surface); }
   #dep-graph { display: block; width: 100%; height: 100%; }
-  .graph-edge { stroke: #94a3b8; stroke-width: 1.5; fill: none; opacity: 0.7; }
-  .node-circle { cursor: pointer; transition: r 0.1s; }
-  .node-circle:hover { stroke-width: 3 !important; }
-  .node-label { font-size: 11px; fill: #374151; font-family: 'JetBrains Mono', monospace; pointer-events: none; }
+  .graph-edge { stroke: var(--border-hover); stroke-width: 1.25; fill: none; opacity: 0.6; }
+  .node-circle { cursor: pointer; transition: r 0.15s ease; stroke: var(--surface); stroke-width: 2; }
+  .node-circle:hover { stroke: var(--text) !important; stroke-width: 2.5 !important; }
+  .node-label { font-size: 10px; fill: var(--text-muted); font-family: var(--font-mono); pointer-events: none; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header page-header-sub">
-  <div class="breadcrumb">
-    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">← {{ record.project_name }}</a>
+{% set active_nav = 'architecture' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 0.2rem 0; letter-spacing: -0.02em;">Interactive Architecture Graph</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Module import dependency graph. Click any node to inspect imports, dependents, and layer classifications.</p>
   </div>
-  <h1>Architecture Graph</h1>
-  <p class="page-sub">Module import dependency graph. Click a node to see details.</p>
 </div>
 
-<div class="arch-layout">
+<div class="arch-layout animate-enter">
   <div class="arch-controls card">
-    <h3>View Options</h3>
+    <h3 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.85rem;">Graph Options</h3>
 
     <div class="form-group">
-      <label>Filter by layer</label>
+      <label>Filter by Layer</label>
       <select id="layer-filter" class="input input-sm">
         <option value="all">All layers</option>
         <option value="data">data</option>
@@ -42,33 +43,40 @@
       </select>
     </div>
 
-    <div class="form-group">
-      <label class="checkbox-label">
+    <div class="form-group" style="margin-bottom: 0.85rem;">
+      <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: var(--text-muted); cursor: pointer;">
         <input type="checkbox" id="show-ext" />
-        Show external imports
+        Show external libraries
       </label>
     </div>
 
-    <button class="btn btn-secondary btn-sm" id="reset-zoom">Reset zoom</button>
-    <button class="btn btn-secondary btn-sm" id="restart-sim" style="margin-top:4px">Restart layout</button>
+    <div style="display: flex; gap: 0.35rem; margin-bottom: 1rem;">
+      <button class="btn-b2b-secondary btn-sm" id="reset-zoom" style="flex: 1;">Reset Zoom</button>
+      <button class="btn-b2b-secondary btn-sm" id="restart-sim" style="flex: 1;">Restart</button>
+    </div>
 
     <hr class="divider" />
 
     <div id="node-info" class="node-info-panel">
-      <p class="text-muted text-sm">Click a node to inspect</p>
+      <p class="text-muted text-xs">Click any node to inspect</p>
     </div>
 
     <hr class="divider" />
 
     <!-- Legend -->
-    <div class="graph-legend-side">
-      {% set layer_colors = {'data':'#2563eb','service':'#16a34a','presentation':'#9333ea','utility':'#ca8a04','config':'#0891b2','cli':'#dc2626','test':'#6b7280','other':'#374151'} %}
-      {% for layer, color in layer_colors.items() %}
-      <div class="legend-item">
-        <span class="legend-dot" style="background:{{ color }}"></span>
-        <span class="text-sm">{{ layer }}</span>
+    <div>
+      <span class="text-xs font-semibold text-muted" style="text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.4rem;">
+        Layer Legend
+      </span>
+      <div class="graph-legend-side">
+        {% set layer_colors = {'data':'#2563eb','service':'#10b981','presentation':'#8b5cf6','utility':'#f59e0b','config':'#06b6d4','cli':'#ef4444','test':'#6b7280','other':'#71717a'} %}
+        {% for layer, color in layer_colors.items() %}
+        <div class="legend-item">
+          <span class="legend-dot" style="background:{{ color }}"></span>
+          <span class="text-xs">{{ layer }}</span>
+        </div>
+        {% endfor %}
       </div>
-      {% endfor %}
     </div>
   </div>
 
@@ -80,36 +88,31 @@
 
 {% block scripts %}
 <script>
-// ── Data from server ──────────────────────────────────────────────────────
 const RAW_GRAPH  = {{ result.graph_imports | tojson }};
 const LAYER_MAP  = {{ result.layer_map | tojson }};
 const ANALYSIS_ID = {{ record.id }};
 
-// Normalise: NetworkX 3.x uses 'edges', older uses 'links'
 const RAW_LINKS = RAW_GRAPH.links || RAW_GRAPH.edges || [];
 const RAW_NODES = RAW_GRAPH.nodes || [];
 
-// ── Layer colour palette ──────────────────────────────────────────────────
 const LAYER_COLORS = {
   data:         '#2563eb',
-  service:      '#16a34a',
-  presentation: '#9333ea',
-  utility:      '#ca8a04',
-  config:       '#0891b2',
-  cli:          '#dc2626',
+  service:      '#10b981',
+  presentation: '#8b5cf6',
+  utility:      '#f59e0b',
+  config:       '#06b6d4',
+  cli:          '#ef4444',
   test:         '#6b7280',
-  other:        '#374151',
+  other:        '#71717a',
 };
 
 function layerColor(moduleId) {
   return LAYER_COLORS[LAYER_MAP[moduleId] || 'other'] || LAYER_COLORS.other;
 }
 
-// ── D3 setup ──────────────────────────────────────────────────────────────
 const svgEl = document.getElementById('dep-graph');
 const svg = d3.select(svgEl);
 
-// Add arrow marker
 const defs = svg.append('defs');
 defs.append('marker')
   .attr('id', 'arrowhead')
@@ -117,56 +120,45 @@ defs.append('marker')
   .attr('refX', 20).attr('refY', 0)
   .attr('markerWidth', 6).attr('markerHeight', 6)
   .attr('orient', 'auto')
-  .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#94a3b8');
+  .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#71717a');
 
 const gRoot = svg.append('g');
 
-// Zoom behaviour
 const zoom = d3.zoom()
   .scaleExtent([0.05, 6])
   .on('zoom', e => gRoot.attr('transform', e.transform));
 svg.call(zoom);
 
 document.getElementById('reset-zoom').onclick = () => {
-  svg.transition().duration(600)
+  svg.transition().duration(500)
     .call(zoom.transform, d3.zoomIdentity.translate(svgW() / 2, svgH() / 2).scale(1));
 };
 
 function svgW() { return svgEl.clientWidth || 800; }
 function svgH() { return svgEl.clientHeight || 560; }
 
-// ── Project module set ────────────────────────────────────────────────────
 const PROJECT_IDS = new Set(RAW_NODES.map(n => n.id));
-
-// ── Active simulation reference ───────────────────────────────────────────
 let activeSim = null;
 
-// ── Build / rebuild the graph ─────────────────────────────────────────────
 function buildGraph(filterLayer, showExt) {
-  // Stop any running simulation
   if (activeSim) activeSim.stop();
   gRoot.selectAll('*').remove();
 
   const W = svgW(), H = svgH();
 
-  // Deep-copy nodes/links so D3 mutations don't corrupt the originals
   let nodes = RAW_NODES.map(n => ({ ...n }));
   let links = RAW_LINKS.map(l => ({ source: l.source, target: l.target }));
 
-  // Remove external nodes/links unless requested
   if (!showExt) {
     links = links.filter(l => PROJECT_IDS.has(l.source) && PROJECT_IDS.has(l.target));
     const usedIds = new Set(links.flatMap(l => [l.source, l.target]));
-    // Keep nodes that either have edges or are in the project
     nodes = nodes.filter(n => PROJECT_IDS.has(n.id) || usedIds.has(n.id));
   }
 
-  // Layer filter
   if (filterLayer !== 'all') {
     const layerNodes = new Set(
       nodes.filter(n => (LAYER_MAP[n.id] || 'other') === filterLayer).map(n => n.id)
     );
-    // Include directly connected neighbours too
     const neighbours = new Set();
     links.forEach(l => {
       if (layerNodes.has(l.source)) neighbours.add(l.target);
@@ -181,27 +173,25 @@ function buildGraph(filterLayer, showExt) {
     gRoot.append('text')
       .attr('x', W / 2).attr('y', H / 2)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#6c757d')
-      .text('No modules to display for this filter.');
+      .attr('fill', 'var(--text-muted)')
+      .attr('font-size', '13px')
+      .text('No modules found matching this filter.');
     return;
   }
 
-  // D3 force simulation
   const sim = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(110))
-    .force('charge', d3.forceManyBody().strength(-260))
+    .force('link', d3.forceLink(links).id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-240))
     .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide(30));
+    .force('collision', d3.forceCollide(26));
 
   activeSim = sim;
 
-  // Edges
   const linkSel = gRoot.append('g')
     .selectAll('line').data(links).join('line')
     .attr('class', 'graph-edge')
     .attr('marker-end', 'url(#arrowhead)');
 
-  // Node groups
   const nodeSel = gRoot.append('g')
     .selectAll('g').data(nodes).join('g')
     .attr('class', 'graph-node')
@@ -215,18 +205,15 @@ function buildGraph(filterLayer, showExt) {
 
   nodeSel.append('circle')
     .attr('class', 'node-circle')
-    .attr('r', d => 9 + Math.min(6, (d.complexity || 0) / 10))
-    .attr('fill', d => layerColor(d.id))
-    .attr('stroke', '#fff')
-    .attr('stroke-width', 2);
+    .attr('r', d => 8 + Math.min(6, (d.complexity || 0) / 10))
+    .attr('fill', d => layerColor(d.id));
 
   nodeSel.append('text')
     .attr('class', 'node-label')
-    .attr('dy', 24)
+    .attr('dy', 22)
     .attr('text-anchor', 'middle')
     .text(d => d.id.split('.').pop());
 
-  // Tick
   sim.on('tick', () => {
     linkSel
       .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
@@ -234,44 +221,34 @@ function buildGraph(filterLayer, showExt) {
     nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
   });
 
-  // Restart button
   document.getElementById('restart-sim').onclick = () => {
     sim.alpha(1).restart();
   };
 }
 
-// ── Node info panel ───────────────────────────────────────────────────────
 function showNodeInfo(d, links) {
   const layer   = LAYER_MAP[d.id] || 'other';
   const color   = layerColor(d.id);
   const inLinks = links.filter(l => (l.target.id || l.target) === d.id);
   const outLinks= links.filter(l => (l.source.id || l.source) === d.id);
-
-  // Build module path from dotted name: a.b.c → a/b/c.py
   const modulePath = d.id.replace(/\./g, '/') + '.py';
 
   document.getElementById('node-info').innerHTML = `
-    <div class="node-info-name">${d.id}</div>
-    <div class="node-info-row"><span>Layer</span>
-      <span class="badge" style="background:${color}18;color:${color};border:1px solid ${color}40">${layer}</span>
-    </div>
-    <div class="node-info-row"><span>Lines</span><span>${d.lines || '–'}</span></div>
-    <div class="node-info-row"><span>Complexity</span><span>${d.complexity || '–'}</span></div>
-    <div class="node-info-row"><span>Imported by</span><span>${inLinks.length}</span></div>
-    <div class="node-info-row"><span>Imports</span><span>${outLinks.length}</span></div>
-    <a href="/module/${ANALYSIS_ID}/${modulePath}"
-       class="btn btn-secondary btn-sm" style="margin-top:8px;display:block;text-align:center">
-       View source details →
+    <div style="font-weight: 600; font-family: var(--font-mono); font-size: 0.85rem; margin-bottom: 0.5rem; word-break: break-all;">${d.id}</div>
+    <div class="node-info-row"><span class="text-muted">Layer</span><span class="badge" style="color:${color};">${layer}</span></div>
+    <div class="node-info-row"><span class="text-muted">Lines</span><span class="mono">${d.lines || '–'}</span></div>
+    <div class="node-info-row"><span class="text-muted">Complexity</span><span class="mono">${d.complexity || '–'}</span></div>
+    <div class="node-info-row"><span class="text-muted">Imported by</span><span class="mono">${inLinks.length}</span></div>
+    <div class="node-info-row"><span class="text-muted">Imports</span><span class="mono">${outLinks.length}</span></div>
+    <a href="/module/${ANALYSIS_ID}/${modulePath}" class="btn-b2b-secondary btn-sm" style="margin-top: 0.75rem; width: 100%; text-align: center; justify-content: center;">
+      View Source Details →
     </a>`;
 }
 
-// Clear info panel when clicking empty space
 svg.on('click', () => {
-  document.getElementById('node-info').innerHTML =
-    '<p class="text-muted text-sm">Click a node to inspect</p>';
+  document.getElementById('node-info').innerHTML = '<p class="text-muted text-xs">Click any node to inspect</p>';
 });
 
-// ── Controls ──────────────────────────────────────────────────────────────
 function redraw() {
   buildGraph(
     document.getElementById('layer-filter').value,
@@ -281,14 +258,12 @@ function redraw() {
 document.getElementById('layer-filter').onchange = redraw;
 document.getElementById('show-ext').onchange     = redraw;
 
-// ── Initial render (wait for layout to be computed) ───────────────────────
 requestAnimationFrame(() => {
   requestAnimationFrame(() => {
     buildGraph('all', false);
   });
 });
 
-// ── Resize handler ────────────────────────────────────────────────────────
 window.addEventListener('resize', () => redraw());
 </script>
 {% endblock %}

@@ -2,75 +2,154 @@
 {% block title %}Issues — {{ record.project_name }}{% endblock %}
 
 {% block content %}
-<div class="page-header page-header-sub">
-  <div class="breadcrumb">
-    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">← {{ record.project_name }}</a>
+{% set active_nav = 'dashboard' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 0.2rem 0; letter-spacing: -0.02em;">Static Analysis Findings &amp; Code Quality</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Synthesized code quality and architectural issues for <strong>{{ record.project_name }}</strong>.</p>
   </div>
-  <h1>Issues</h1>
-  <p class="page-sub">Static analysis findings for <strong>{{ record.project_name }}</strong></p>
 </div>
 
 {% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
 {% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
 {% set infos    = result.issues | selectattr('level','equalto','info')    | list %}
 
-<div class="issue-filter-bar">
-  <button class="filter-btn active" data-filter="all">All <span class="badge">{{ result.issues|length }}</span></button>
-  <button class="filter-btn" data-filter="error">Errors <span class="badge badge-error">{{ errors|length }}</span></button>
-  <button class="filter-btn" data-filter="warning">Warnings <span class="badge badge-warning">{{ warnings|length }}</span></button>
-  <button class="filter-btn" data-filter="info">Info <span class="badge">{{ infos|length }}</span></button>
+<!-- Issues Metric Cards -->
+<div class="metrics-panel grid-cols-4 animate-enter" style="margin-bottom: 1.5rem;">
+  <div class="metric-card">
+    <div class="metric-stat">{{ result.issues | length }}</div>
+    <div class="metric-label">Total Findings</div>
+  </div>
+  <div class="metric-card {% if errors %}stat-error{% endif %}">
+    <div class="metric-stat" style="color: {% if errors %}var(--red){% else %}var(--text){% endif %};">{{ errors | length }}</div>
+    <div class="metric-label">Critical Errors</div>
+  </div>
+  <div class="metric-card {% if warnings %}stat-warn{% endif %}">
+    <div class="metric-stat" style="color: {% if warnings %}var(--orange){% else %}var(--text){% endif %};">{{ warnings | length }}</div>
+    <div class="metric-label">Warnings</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-stat">{{ infos | length }}</div>
+    <div class="metric-label">Info Notes</div>
+  </div>
 </div>
 
-{% if result.issues %}
-<div class="issues-table-wrap card">
-  <table class="table issues-table" id="issues-table">
-    <thead>
-      <tr>
-        <th>Severity</th>
-        <th>Category</th>
-        <th>Issue</th>
-        <th>Detail</th>
-        <th>Location</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for issue in result.issues %}
-      <tr class="issue-row" data-level="{{ issue.level }}">
-        <td>
-          <span class="badge badge-{{ issue.level }}">{{ issue.level }}</span>
-        </td>
-        <td class="text-sm text-muted">{{ issue.category.replace('_',' ') }}</td>
-        <td class="issue-title-cell">{{ issue.title }}</td>
-        <td class="text-sm text-muted">{{ issue.detail }}</td>
-        <td>
-          {% if issue.location %}
-            <code class="mono text-sm">{{ issue.location }}</code>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="card animate-enter">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+    <!-- Filter Pills -->
+    <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+      <button class="filter-btn active issue-filter-btn" data-filter="all">
+        All <span class="badge" style="font-size:0.68rem; padding:0.1rem 0.35rem;">{{ result.issues|length }}</span>
+      </button>
+      <button class="filter-btn issue-filter-btn" data-filter="error">
+        Errors <span class="badge badge-error" style="font-size:0.68rem; padding:0.1rem 0.35rem;">{{ errors|length }}</span>
+      </button>
+      <button class="filter-btn issue-filter-btn" data-filter="warning">
+        Warnings <span class="badge badge-warning" style="font-size:0.68rem; padding:0.1rem 0.35rem;">{{ warnings|length }}</span>
+      </button>
+      <button class="filter-btn issue-filter-btn" data-filter="info">
+        Info <span class="badge" style="font-size:0.68rem; padding:0.1rem 0.35rem;">{{ infos|length }}</span>
+      </button>
+    </div>
+
+    <!-- Search input -->
+    <div style="min-width: 240px; flex: 1; max-width: 340px;">
+      <input type="text" id="issue-search" class="input input-sm" placeholder="Filter issues… (Press '/' to focus)" style="width: 100%;" />
+    </div>
+  </div>
+
+  {% if result.issues %}
+  <div style="overflow-x: auto;">
+    <table class="table issues-table" id="issues-table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Category</th>
+          <th>Issue</th>
+          <th>Detail</th>
+          <th>Location</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in result.issues %}
+        <tr class="issue-row" data-level="{{ issue.level }}" data-search="{{ issue.title }} {{ issue.detail }} {{ issue.location or '' }} {{ issue.category }}">
+          <td>
+            <span class="badge badge-{{ issue.level }}" style="text-transform: uppercase;">
+              {{ issue.level }}
+            </span>
+          </td>
+          <td class="text-sm text-muted mono text-xs">
+            {{ issue.category.replace('_',' ') }}
+          </td>
+          <td style="font-weight: 500;">
+            {{ issue.title }}
+          </td>
+          <td class="text-sm text-muted">
+            {{ issue.detail }}
+          </td>
+          <td>
+            {% if issue.location %}
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <code class="mono text-xs">{{ issue.location }}</code>
+                <button 
+                  class="btn-copy" 
+                  title="Copy location" 
+                  onclick="copyTextToClipboard('{{ issue.location }}', 'Location', this)"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                </button>
+              </div>
+            {% else %}
+              <span class="text-muted text-sm">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p style="font-weight: 500; margin-bottom: 0.25rem;">No issues detected</p>
+    <p class="text-muted text-sm">Clean bill of health for imports, cycles, and complexity ceilings.</p>
+  </div>
+  {% endif %}
 </div>
-{% else %}
-<div class="card">
-  <p class="empty-state" style="padding: 2rem 0">🎉 No issues detected in this project.</p>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-  const filterBtns = document.querySelectorAll('.filter-btn');
+  let activeFilter = 'all';
+  let activeQuery = '';
+
+  const filterBtns = document.querySelectorAll('.issue-filter-btn');
+  const searchInput = document.getElementById('issue-search');
+
+  function applyIssueFilters() {
+    document.querySelectorAll('.issue-row').forEach(row => {
+      const matchFilter = (activeFilter === 'all' || row.dataset.level === activeFilter);
+      const text = (row.dataset.search || '').toLowerCase();
+      const matchQuery = !activeQuery || text.includes(activeQuery);
+      row.style.display = (matchFilter && matchQuery) ? '' : 'none';
+    });
+  }
+
   filterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       filterBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const filter = btn.dataset.filter;
-      document.querySelectorAll('.issue-row').forEach(row => {
-        row.style.display = (filter === 'all' || row.dataset.level === filter) ? '' : 'none';
-      });
+      activeFilter = btn.dataset.filter || 'all';
+      applyIssueFilters();
     });
   });
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      activeQuery = (this.value || '').toLowerCase().trim();
+      applyIssueFilters();
+    });
+  }
 </script>
 {% endblock %}

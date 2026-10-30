@@ -1,0 +1,76 @@
+<div class="project-header">
+  <div class="project-header-top">
+    <div class="project-identity">
+      <div class="project-title-row">
+        <h1 class="project-title">{{ record.project_name }}</h1>
+        <span class="badge" style="font-size: 0.72rem; font-weight: 500;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block;"></span>
+          Snapshot #{{ record.id }}
+        </span>
+      </div>
+      <div class="project-meta-row">
+        <span class="project-meta-item">
+          <svg class="meta-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Analyzed {{ record.created_at }}
+        </span>
+        {% if result and result.elapsed is defined %}
+        <span class="meta-dot">&bull;</span>
+        <span class="project-meta-item">
+          <svg class="meta-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          {{ result.elapsed }}s analysis time
+        </span>
+        {% endif %}
+        {% if result and result.summary and result.summary.error_files is defined and result.summary.error_files > 0 %}
+        <span class="meta-dot">&bull;</span>
+        <span class="project-meta-item" style="color: var(--red);">
+          <svg class="meta-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ result.summary.error_files }} parse error{{ 's' if result.summary.error_files > 1 }}
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="project-header-actions">
+      <a href="{{ url_for('report', analysis_id=record.id) }}" class="btn-b2b-secondary" target="_blank" title="Export HTML Architecture Report">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+        <span>Export Report</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Unified Navigation Bar (Vercel Style Sub-Nav) -->
+  <nav class="unified-subnav" aria-label="Project Sections">
+    <a href="{{ url_for('dashboard', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'dashboard' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a href="{{ url_for('ai_architect_view', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'ai_architect' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+      <span>AI Architect</span>
+    </a>
+    <a href="{{ url_for('architecture', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'architecture' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>
+      <span>Architecture</span>
+    </a>
+    <a href="{{ url_for('risks_view', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'risks' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      <span>Risks</span>
+    </a>
+    <a href="{{ url_for('impact_view', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'impact' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <span>Change Impact</span>
+    </a>
+    <a href="{{ url_for('discovery_view', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'discovery' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+      <span>Discovery</span>
+    </a>
+    <a href="{{ url_for('drift_view', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'drift' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+      <span>Drift</span>
+    </a>
+    <a href="{{ url_for('modules', analysis_id=record.id) }}" class="subnav-link {% if active_nav == 'modules' %}active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+      <span>All Files</span>
+    </a>
+  </nav>
+</div>

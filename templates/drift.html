@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% block title %}Architecture Drift — {{ record.project_name }}{% endblock %}
+
+{% block content %}
+{% set active_nav = 'drift' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0 0 0.25rem 0; letter-spacing: -0.02em;">Architecture Drift &amp; Snapshot Comparison</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Compare codebase structure across scans to track architectural changes, cycles, and metric drift over time.</p>
+  </div>
+</div>
+
+<!-- Snapshot Selection Bar -->
+<div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem 1.5rem;">
+  <form method="GET" action="{{ url_for('drift_view', analysis_id=record.id) }}" style="display: flex; gap: 1.25rem; align-items: flex-end; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 260px;">
+      <label style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+        Base Snapshot (Older)
+      </label>
+      <select name="base_id" class="input input-sm" style="width: 100%;">
+        {% for snap in project_snapshots %}
+        <option value="{{ snap.id }}" {% if base_record and base_record.id == snap.id %}selected{% endif %}>
+          #{{ snap.id }} &mdash; {{ snap.created_at }} ({{ snap.project_name }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: center; padding-bottom: 0.4rem; color: var(--text-muted);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+        <polyline points="12 5 19 12 12 19"></polyline>
+      </svg>
+    </div>
+
+    <div style="flex: 1; min-width: 260px;">
+      <label style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+        Target Snapshot (Newer)
+      </label>
+      <select name="target_id" class="input input-sm" style="width: 100%;">
+        {% for snap in project_snapshots %}
+        <option value="{{ snap.id }}" {% if target_record and target_record.id == snap.id %}selected{% endif %}>
+          #{{ snap.id }} &mdash; {{ snap.created_at }} ({{ snap.project_name }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm" style="height: 36px; padding: 0 1.25rem;">
+        Compare Snapshots
+      </button>
+    </div>
+  </form>
+</div>
+
+{% if drift %}
+<!-- Verdict and High-Level Explanation -->
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+        <span class="badge {% if drift.is_identical %}badge-ok{% elif 'DEGRADATION' in drift.verdict %}badge-error{% elif 'REFACTORED' in drift.verdict %}badge-info{% else %}badge-warning{% endif %}"
+              style="font-size: 0.75rem; padding: 0.2rem 0.6rem; letter-spacing: 0.04em;">
+          {{ drift.verdict }}
+        </span>
+        <span class="text-muted text-sm font-mono">
+          #{{ base_record.id }} ({{ base_record.created_at }}) &rarr; #{{ target_record.id }} ({{ target_record.created_at }})
+        </span>
+      </div>
+      <p style="font-size: 0.95rem; line-height: 1.5; color: var(--text); margin: 0;">
+        {{ drift.explanation }}
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider" style="margin: 1rem 0 1.25rem 0;" />
+
+  <!-- Metric Shift Cards -->
+  {% set diff = drift.metric_changes.metrics_diff %}
+  <div class="metrics-panel" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">
+    <div class="metric-card">
+      <div class="metric-label">Files Drift</div>
+      <div class="metric-value" style="font-family: var(--font-mono); color: {% if diff.files_diff > 0 %}var(--accent){% elif diff.files_diff < 0 %}var(--warning){% else %}var(--text){% endif %};">
+        {{ "+" if diff.files_diff > 0 else "" }}{{ diff.files_diff }}
+      </div>
+      <div class="metric-sub">{{ target_record.result.summary.total_files if target_record.result else 0 }} current</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Lines Drift</div>
+      <div class="metric-value" style="font-family: var(--font-mono); color: {% if diff.lines_diff > 0 %}var(--accent){% elif diff.lines_diff < 0 %}var(--success){% else %}var(--text){% endif %};">
+        {{ "+" if diff.lines_diff > 0 else "" }}{{ "{:,}".format(diff.lines_diff) }}
+      </div>
+      <div class="metric-sub">{{ "{:,}".format(target_record.result.summary.total_lines if target_record.result else 0) }} current</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total Complexity</div>
+      <div class="metric-value" style="font-family: var(--font-mono); color: {% if diff.complexity_diff > 0 %}var(--danger){% elif diff.complexity_diff < 0 %}var(--success){% else %}var(--text){% endif %};">
+        {{ "+" if diff.complexity_diff > 0 else "" }}{{ diff.complexity_diff }}
+      </div>
+      <div class="metric-sub">{{ target_record.result.summary.total_complexity if target_record.result else 0 }} total</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Avg Complexity</div>
+      <div class="metric-value" style="font-family: var(--font-mono); color: {% if diff.avg_complexity_diff > 0 %}var(--danger){% elif diff.avg_complexity_diff < 0 %}var(--success){% else %}var(--text){% endif %};">
+        {{ "+" if diff.avg_complexity_diff > 0 else "" }}{{ diff.avg_complexity_diff }}
+      </div>
+      <div class="metric-sub">{{ target_record.result.summary.avg_complexity if target_record.result else 0 }} avg</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Cycles (New / Fixed)</div>
+      <div class="metric-value" style="font-family: var(--font-mono); color: {% if drift.structural_changes.new_cycles %}var(--danger){% else %}var(--success){% endif %};">
+        +{{ drift.structural_changes.new_cycles | length }} / -{{ drift.structural_changes.resolved_cycles | length }}
+      </div>
+      <div class="metric-sub">Dependency loops</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Issues (New / Fixed)</div>
+      <div class="metric-value" style="font-family: var(--font-mono); color: {% if drift.issue_changes.new_count > 0 %}var(--warning){% else %}var(--text){% endif %};">
+        +{{ drift.issue_changes.new_count }} / -{{ drift.issue_changes.resolved_count }}
+      </div>
+      <div class="metric-sub">Architectural debt</div>
+    </div>
+  </div>
+</div>
+
+<!-- Structural Changes: Added and Removed Modules -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+  <!-- Added Modules -->
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Added Modules</h3>
+      <span class="badge badge-ok">{{ drift.structural_changes.added_modules | length }} added</span>
+    </div>
+    {% if drift.structural_changes.added_modules %}
+    <div style="overflow-x: auto;">
+      <table class="table table-sm" style="margin: 0;">
+        <thead><tr><th>Module</th><th style="text-align: right;">Lines</th><th style="text-align: right;">Complexity</th></tr></thead>
+        <tbody>
+          {% for m in drift.structural_changes.added_modules %}
+          <tr>
+            <td>
+              <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=m.path) }}" class="font-mono text-xs" style="color: var(--accent); font-weight: 500;">
+                {{ m.module_name }}
+              </a>
+              <div class="text-muted text-xs font-mono">{{ m.path }}</div>
+            </td>
+            <td style="text-align: right; font-family: var(--font-mono);">{{ m.lines }}</td>
+            <td style="text-align: right; font-family: var(--font-mono);">{{ m.complexity }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No modules were added.</div>
+    {% endif %}
+  </div>
+
+  <!-- Removed Modules -->
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Removed Modules</h3>
+      <span class="badge badge-muted">{{ drift.structural_changes.removed_modules | length }} removed</span>
+    </div>
+    {% if drift.structural_changes.removed_modules %}
+    <div style="overflow-x: auto;">
+      <table class="table table-sm" style="margin: 0;">
+        <thead><tr><th>Module</th><th style="text-align: right;">Lines</th><th style="text-align: right;">Complexity</th></tr></thead>
+        <tbody>
+          {% for m in drift.structural_changes.removed_modules %}
+          <tr>
+            <td>
+              <div class="font-mono text-xs" style="color: var(--text-muted); text-decoration: line-through;">{{ m.module_name }}</div>
+              <div class="text-muted text-xs font-mono">{{ m.path }}</div>
+            </td>
+            <td style="text-align: right; font-family: var(--font-mono); color: var(--text-muted);">{{ m.lines }}</td>
+            <td style="text-align: right; font-family: var(--font-mono); color: var(--text-muted);">{{ m.complexity }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No modules were removed.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Renamed and Modified Modules -->
+{% if drift.structural_changes.renamed_modules %}
+<div class="card" style="margin-bottom: 1.5rem; padding: 0; overflow: hidden;">
+  <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+    <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Renamed Modules</h3>
+    <span class="badge badge-info">{{ drift.structural_changes.renamed_modules | length }} renamed</span>
+  </div>
+  <table class="table table-sm" style="margin: 0;">
+    <thead><tr><th>Old Location</th><th></th><th>New Location</th></tr></thead>
+    <tbody>
+      {% for r in drift.structural_changes.renamed_modules %}
+      <tr>
+        <td><code class="font-mono text-xs">{{ r.old_path }}</code> <span class="text-muted text-xs">({{ r.old_module }})</span></td>
+        <td style="width: 30px; text-align: center; color: var(--text-muted);">&rarr;</td>
+        <td><code class="font-mono text-xs" style="color: var(--accent);">{{ r.new_path }}</code> <span class="text-muted text-xs">({{ r.new_module }})</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom: 1.5rem; padding: 0; overflow: hidden;">
+  <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+    <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Modified Files</h3>
+    <span class="badge badge-subtle">{{ drift.structural_changes.modified_modules | length }} files</span>
+  </div>
+  {% if drift.structural_changes.modified_modules %}
+  <div style="overflow-x: auto;">
+    <table class="table table-sm" style="margin: 0;">
+      <thead>
+        <tr>
+          <th>Module</th>
+          <th>Lines Drift</th>
+          <th>Complexity Drift</th>
+          <th style="text-align: right;">Hash</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in drift.structural_changes.modified_modules %}
+        <tr>
+          <td>
+            <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=m.path) }}" class="font-mono text-xs" style="color: var(--accent); font-weight: 500;">
+              {{ m.module_name }}
+            </a>
+            <div class="text-muted text-xs font-mono">{{ m.path }}</div>
+          </td>
+          <td style="font-family: var(--font-mono); font-size: 0.8rem;">
+            {{ m.old_lines }} &rarr; {{ m.new_lines }}
+            <span style="color: {% if m.lines_diff > 0 %}var(--accent){% elif m.lines_diff < 0 %}var(--success){% else %}var(--text-muted){% endif %}; font-weight: 600; margin-left: 0.25rem;">
+              ({{ "+" if m.lines_diff > 0 else "" }}{{ m.lines_diff }})
+            </span>
+          </td>
+          <td style="font-family: var(--font-mono); font-size: 0.8rem;">
+            {{ m.old_complexity }} &rarr; {{ m.new_complexity }}
+            <span style="color: {% if m.complexity_diff > 0 %}var(--danger){% elif m.complexity_diff < 0 %}var(--success){% else %}var(--text-muted){% endif %}; font-weight: 600; margin-left: 0.25rem;">
+              ({{ "+" if m.complexity_diff > 0 else "" }}{{ m.complexity_diff }})
+            </span>
+          </td>
+          <td style="text-align: right;">
+            <code class="text-muted" style="font-family: var(--font-mono); font-size: 0.75rem;">{{ m.new_hash[:8] }}</code>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No common files were modified.</div>
+  {% endif %}
+</div>
+
+<!-- Dependency Relationships Added / Removed -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Added Dependencies</h3>
+      <span class="badge badge-info">{{ drift.structural_changes.added_dependencies | length }} added</span>
+    </div>
+    {% if drift.structural_changes.added_dependencies %}
+    <div style="overflow-x: auto;">
+      <table class="table table-sm" style="margin: 0;">
+        <thead><tr><th>Source</th><th></th><th>Target</th></tr></thead>
+        <tbody>
+          {% for edge in drift.structural_changes.added_dependencies %}
+          <tr>
+            <td><code class="font-mono text-xs">{{ edge.source }}</code></td>
+            <td style="width: 24px; text-align: center; color: var(--text-muted);">&rarr;</td>
+            <td><code class="font-mono text-xs" style="color: var(--accent);">{{ edge.target }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No new dependency relationships added.</div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Removed Dependencies</h3>
+      <span class="badge badge-muted">{{ drift.structural_changes.removed_dependencies | length }} removed</span>
+    </div>
+    {% if drift.structural_changes.removed_dependencies %}
+    <div style="overflow-x: auto;">
+      <table class="table table-sm" style="margin: 0;">
+        <thead><tr><th>Source</th><th></th><th>Target</th></tr></thead>
+        <tbody>
+          {% for edge in drift.structural_changes.removed_dependencies %}
+          <tr>
+            <td><code class="font-mono text-xs" style="text-decoration: line-through; color: var(--text-muted);">{{ edge.source }}</code></td>
+            <td style="width: 24px; text-align: center; color: var(--text-muted);">&rarr;</td>
+            <td><code class="font-mono text-xs" style="text-decoration: line-through; color: var(--text-muted);">{{ edge.target }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No dependency relationships removed.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Cycles Shifts -->
+{% if drift.structural_changes.new_cycles or drift.structural_changes.resolved_cycles %}
+<div class="card" style="margin-bottom: 1.5rem;">
+  <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0 0 1rem 0;">Circular Dependency Shifts</h3>
+  {% if drift.structural_changes.new_cycles %}
+  <div style="margin-bottom: 1.25rem;">
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+      <span class="badge badge-error">New Cycles</span>
+      <span class="text-xs text-muted">{{ drift.structural_changes.new_cycles | length }} cycle(s) introduced</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+      {% for c in drift.structural_changes.new_cycles %}
+      <div style="padding: 0.5rem 0.75rem; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--danger); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.78rem;">
+        {{ c }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if drift.structural_changes.resolved_cycles %}
+  <div>
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+      <span class="badge badge-ok">Resolved Cycles</span>
+      <span class="text-xs text-muted">{{ drift.structural_changes.resolved_cycles | length }} cycle(s) resolved</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+      {% for c in drift.structural_changes.resolved_cycles %}
+      <div style="padding: 0.5rem 0.75rem; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--success); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.78rem; text-decoration: line-through; color: var(--text-muted);">
+        {{ c }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Architectural Issues Drift -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">New Issues</h3>
+      <span class="badge badge-warning">{{ drift.issue_changes.new_count }}</span>
+    </div>
+    {% if drift.issue_changes.new_issues %}
+    <div style="padding: 0.5rem 0;">
+      {% for iss in drift.issue_changes.new_issues %}
+      <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); font-size: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <span class="badge badge-{{ iss.level }}">{{ iss.category }}</span>
+          <span style="font-weight: 600;">{{ iss.title }}</span>
+        </div>
+        <div class="text-muted text-xs" style="margin-bottom: 0.35rem;">{{ iss.detail }}</div>
+        <div class="text-muted text-xs font-mono">Location: <code>{{ iss.location }}</code></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No new architectural issues introduced.</div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Resolved Issues</h3>
+      <span class="badge badge-ok">{{ drift.issue_changes.resolved_count }}</span>
+    </div>
+    {% if drift.issue_changes.resolved_issues %}
+    <div style="padding: 0.5rem 0;">
+      {% for iss in drift.issue_changes.resolved_issues %}
+      <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); font-size: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <span class="badge badge-ok">RESOLVED</span>
+          <span style="font-weight: 600;">{{ iss.title }}</span>
+        </div>
+        <div class="text-muted text-xs" style="margin-bottom: 0.35rem;">{{ iss.detail }}</div>
+        <div class="text-muted text-xs font-mono">Location: <code>{{ iss.location }}</code></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding: 1.5rem; text-align: center;" class="text-muted text-xs">No issues resolved in this interval.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="empty-state" style="padding: 3rem 2rem; text-align: center;">
+    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem auto; color: var(--text-muted);">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 14 14"></polyline>
+      </svg>
+    </div>
+    <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem;">Select Two Snapshots</h3>
+    <p class="text-muted text-sm" style="max-width: 420px; margin: 0 auto;">Choose a Base snapshot (older) and a Target snapshot (newer) above to inspect architectural drift, cyclic loops, and file changes.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

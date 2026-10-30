@@ -5,19 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}ProjectDNA{% endblock %}</title>
   <meta name="description" content="Automated software architecture mining and codebase intelligence for Python projects." />
+  <script>
+    (function() {
+      const saved = localStorage.getItem('projectdna-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v=3.0.0" />
   {% block head %}{% endblock %}
 </head>
 <body>
   <nav class="navbar">
     <div class="nav-inner">
-      <a href="{{ url_for('index') }}" class="nav-brand">
-        <span class="brand-icon">⬡</span>
-        <span class="brand-name">ProjectDNA</span>
-      </a>
-      <span class="nav-tagline">Python Codebase Intelligence</span>
+      <div class="nav-brand-group">
+        <a href="{{ url_for('index') }}" class="nav-brand">
+          <span class="brand-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/></svg>
+          </span>
+          <span class="brand-name">ProjectDNA<span class="brand-accent-dot">.</span></span>
+        </a>
+        <span class="nav-tagline">Codebase Architecture &amp; Structural Intelligence</span>
+      </div>
+
+      <div class="nav-actions">
+        {% if record is defined and record.project_name %}
+          <a href="{{ url_for('dashboard', analysis_id=record.id) }}" class="nav-project-pill" title="Current Active Project: {{ record.project_name }}">
+            <svg class="nav-pill-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+            <span class="mono nav-pill-text">{{ record.project_name }}</span>
+          </a>
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="nav-link">
+          <span>Upload / Scan</span>
+        </a>
+        <span class="nav-status-pill">
+          <span class="nav-status-dot"></span> Engine Online
+        </span>
+        <button id="theme-toggle" class="nav-theme-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode" aria-label="Toggle theme">
+          <span id="theme-icon" style="display:flex;align-items:center;justify-content:center;"></span>
+        </button>
+      </div>
     </div>
   </nav>
 
@@ -25,14 +54,25 @@
     {% if messages %}
       <div class="flash-container">
         {% for category, message in messages %}
-          <div class="flash flash-{{ category }}">
-            <span class="flash-icon">{% if category == 'error' %}✕{% elif category == 'info' %}ℹ{% else %}✓{% endif %}</span>
-            {{ message }}
+          <div class="flash flash-{{ category }} animate-enter">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              {% if category == 'error' %}
+                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+              {% elif category == 'warning' %}
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              {% else %}
+                <polyline points="20 6 9 17 4 12"/>
+              {% endif %}
+            </svg>
+            <span>{{ message }}</span>
           </div>
         {% endfor %}
       </div>
     {% endif %}
   {% endwith %}
+
+  <!-- Global Micro Toast Notification Container -->
+  <div id="dna-toast" class="dna-toast" aria-live="polite"></div>
 
   <main class="main-content">
     {% block content %}{% endblock %}
@@ -40,10 +80,118 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      ProjectDNA &mdash; Python Architecture Mining Tool
+      <div>ProjectDNA &mdash; Automated Python Architecture Mining &amp; Maintenance System</div>
+      <div class="mono text-muted text-sm footer-chips">
+        <span class="chip-item">Python AST</span>
+        <span class="chip-item">NetworkX</span>
+        <span class="chip-item">Deterministic Heuristics</span>
+        <span class="chip-item">Groq Architecture LLM</span>
+      </div>
     </div>
   </footer>
 
+  <script>
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('projectdna-theme', next);
+      updateThemeIcon(next);
+      window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: next } }));
+    }
+
+    function updateThemeIcon(theme) {
+      const icon = document.getElementById('theme-icon');
+      if (!icon) return;
+      if (theme === 'dark') {
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+      } else {
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      updateThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
+    });
+
+    // Global Toast Notification Helper
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('dna-toast');
+      if (!toast) return;
+      toast.className = `dna-toast dna-toast-${type} active`;
+      
+      let iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+      if (type === 'success') {
+        iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--green);"><polyline points="20 6 9 17 4 12"/></svg>';
+      } else if (type === 'error') {
+        iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--red);"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+      }
+      
+      toast.innerHTML = `${iconSvg} <span>${message}</span>`;
+      clearTimeout(window._toastTimeout);
+      window._toastTimeout = setTimeout(() => {
+        toast.classList.remove('active');
+      }, 2600);
+    }
+
+    // Global Clipboard Copy Helper with Optional Button Feedback
+    function copyTextToClipboard(text, labelOrBtn = 'Location', maybeBtn = null) {
+      let label = 'Copied';
+      let btn = null;
+
+      if (typeof labelOrBtn === 'string') {
+        label = labelOrBtn;
+        btn = maybeBtn;
+      } else if (labelOrBtn instanceof HTMLElement) {
+        btn = labelOrBtn;
+      }
+
+      function onCopySuccess() {
+        showToast(`${label} copied to clipboard`, 'success');
+        if (btn && btn.classList) {
+          btn.classList.add('copied');
+          const originalHTML = btn.innerHTML;
+          btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+          setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('copied');
+          }, 1500);
+        }
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(onCopySuccess).catch(() => fallbackCopy(text, onCopySuccess));
+      } else {
+        fallbackCopy(text, onCopySuccess);
+      }
+    }
+
+    function fallbackCopy(text, onSuccess) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        if (onSuccess) onSuccess();
+      } catch (err) {
+        showToast('Failed to copy to clipboard', 'error');
+      }
+      document.body.removeChild(ta);
+    }
+
+    // Global search focus shortcut: Pressing "/" focuses any active search input
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        const searchInput = document.querySelector('input[type="text"][placeholder*="filter" i], input[type="text"][placeholder*="search" i], #module-search, #class-search, #fn-search, #metrics-search');
+        if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+        }
+      }
+    });
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

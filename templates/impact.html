@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}Change Impact — {{ record.project_name }}{% endblock %}
+
+{% block head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  .impact-node { cursor: pointer; transition: r 0.15s ease; stroke: var(--surface); stroke-width: 2; }
+  .impact-node:hover { stroke: var(--text) !important; stroke-width: 2.5 !important; }
+  .impact-edge { stroke: var(--border-hover); stroke-width: 1.25; fill: none; opacity: 0.6; }
+  .impact-label { font-size: 10px; fill: var(--text-muted); font-family: var(--font-mono); pointer-events: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set active_nav = 'impact' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 0.2rem 0; letter-spacing: -0.02em;">Change Impact Analysis &amp; Blast Radius</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Predict downstream blast radius, affected call sites, and test invalidation before changing code.</p>
+  </div>
+</div>
+
+<div class="impact-layout animate-enter">
+  <!-- Left Column: Module Selector & Summaries -->
+  <div class="card" style="padding: 1rem;">
+    <h3 class="card-title" style="margin-bottom: 0.75rem;">Modules by Impact Risk</h3>
+    <input type="text" id="module-search" class="input input-sm" placeholder="Filter modules… (Press '/' to focus)"
+      style="margin-bottom: 0.75rem;" />
+
+    <div class="impact-module-list" id="impact-module-list">
+      {% for item in impact_summaries %}
+      <a href="{{ url_for('impact_view', analysis_id=record.id, target=item.module_name) }}"
+        class="impact-module-item {% if current_target == item.module_name %}active{% endif %}"
+        data-name="{{ item.module_name }} {{ item.path }}">
+        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 0.5rem;">
+          <div style="font-weight: 500;">{{ item.module_name }}</div>
+          <div class="text-muted text-xs mono">{{ item.path }}</div>
+        </div>
+        <div style="text-align: right; flex-shrink: 0;">
+          <span class="badge badge-{{ item.risk_level | lower }}">{{ item.risk_level }}</span>
+          <div class="text-muted text-xs mono" style="margin-top: 2px;">
+            {{ item.total_dependents }} dep{{ 's' if item.total_dependents != 1 }}
+          </div>
+        </div>
+      </a>
+      {% else %}
+      <div class="empty-state" style="padding: 1rem;">No modules found.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Right Column: Detail for Selected Module -->
+  <div>
+    {% if impact and impact.found %}
+    <!-- Header Card -->
+    <div class="card" style="margin-bottom: 1.25rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; margin-bottom: 0.35rem;">
+            <span class="badge badge-{{ impact.risk_level | lower }}">
+              Risk: {{ impact.risk_level }} ({{ impact.risk_score }}/100)
+            </span>
+            <span class="layer-tag">{{ impact.target_info.layer }} layer</span>
+            {% if impact.is_hub %}
+            <span class="badge badge-warning">Architectural Hub</span>
+            {% endif %}
+            {% if impact.in_cycle %}
+            <span class="badge badge-error">Circular Cycle</span>
+            {% endif %}
+          </div>
+          <h2 style="font-size: 1.35rem; font-weight: 600; margin: 0.25rem 0;">
+            <code class="mono">{{ impact.target }}</code>
+          </h2>
+          <div class="text-muted text-xs mono">
+            File: <code>{{ impact.target_info.path }}</code> &bull;
+            {{ impact.target_info.lines }} lines &bull;
+            Complexity: {{ impact.target_info.complexity }} &bull;
+            <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=impact.target_info.path) }}" class="link-primary">View Source Details →</a>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider" style="margin: 0.85rem 0;" />
+
+      <!-- Impact Stats -->
+      <div class="impact-stat-row">
+        <div class="impact-stat-item">
+          <div class="impact-stat-val" style="color: var(--accent);">{{ impact.direct_dependents | length }}</div>
+          <div class="impact-stat-lbl">Direct Dependents</div>
+        </div>
+        <div class="impact-stat-item">
+          <div class="impact-stat-val">{{ impact.transitive_dependents | length }}</div>
+          <div class="impact-stat-lbl">Transitive (Indirect)</div>
+        </div>
+        <div class="impact-stat-item">
+          <div class="impact-stat-val" style="color: var(--orange);">{{ impact.total_affected_count }}</div>
+          <div class="impact-stat-lbl">Total Blast Radius</div>
+        </div>
+        <div class="impact-stat-item">
+          <div class="impact-stat-val" style="color: var(--green);">{{ impact.affected_tests | length }}</div>
+          <div class="impact-stat-lbl">Downstream Tests</div>
+        </div>
+        <div class="impact-stat-item">
+          <div class="impact-stat-val">{{ impact.affected_classes | length }}</div>
+          <div class="impact-stat-lbl">Subclasses</div>
+        </div>
+        <div class="impact-stat-item">
+          <div class="impact-stat-val">{{ impact.affected_functions | length }}</div>
+          <div class="impact-stat-lbl">Call Sites</div>
+        </div>
+      </div>
+
+      <!-- Explanation Box -->
+      <div class="risk-explanation-box risk-{{ impact.risk_level | lower }}">
+        <strong>Architectural Risk Rationale:</strong>
+        <p style="margin-top: 0.25rem; font-size: 0.8125rem;">{{ impact.explanation }}</p>
+      </div>
+    </div>
+
+    <!-- Impact Subgraph Visualization -->
+    <div class="card" style="margin-bottom: 1.25rem;">
+      <h3 class="card-title">Downstream Dependency Subgraph</h3>
+      <p class="text-muted text-xs" style="margin-bottom: 0.75rem;">
+        Directed dependency map. Arrows point from dependent modules to imported modules.
+        <span style="display: inline-block; margin-left: 1rem;">
+          <span style="color: #2563eb;">●</span> Target &nbsp;
+          <span style="color: #f59e0b;">●</span> Direct &nbsp;
+          <span style="color: #8b5cf6;">●</span> Transitive &nbsp;
+          <span style="color: #10b981;">●</span> Test Suite
+        </span>
+      </p>
+      <div class="impact-graph-container">
+        <svg id="impact-svg"></svg>
+      </div>
+    </div>
+
+    <!-- Downstream Tests to Run -->
+    <div class="card" style="margin-bottom: 1.25rem;">
+      <h3 class="card-title">Recommended Regression Tests ({{ impact.affected_tests | length }})</h3>
+      {% if impact.affected_tests %}
+      <p class="text-muted text-xs" style="margin-bottom: 0.5rem;">
+        Modifying <code>{{ impact.target }}</code> may invalidate behavior in these test modules:
+      </p>
+      <ul style="padding-left: 1.2rem; font-size: 0.8125rem; line-height: 1.8;">
+        {% for t in impact.affected_tests %}
+        <li><code class="mono">{{ t }}</code></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-muted text-xs">
+        ⚠ No downstream test modules import this component directly or indirectly. Changes will lack automated regression coverage.
+      </p>
+      {% endif %}
+    </div>
+
+    <!-- Dependency Paths -->
+    <div class="card" style="margin-bottom: 1.25rem;">
+      <h3 class="card-title">Downstream Dependency Chains ({{ impact.total_affected_count }})</h3>
+      {% if impact.dependency_paths %}
+      <div style="overflow-x: auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Dependent Module</th>
+              <th>Impact Relationship</th>
+              <th>Dependency Chain (Who Imports Whom)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dep, path in impact.dependency_paths.items() %}
+            <tr>
+              <td>
+                <code class="mono">{{ dep }}</code>
+              </td>
+              <td>
+                {% if dep in impact.direct_dependents %}
+                <span class="badge badge-warning">Direct</span>
+                {% else %}
+                <span class="badge badge-info">Transitive</span>
+                {% endif %}
+              </td>
+              <td class="mono text-xs">
+                {% for p in path %}
+                  <span style="{% if p == impact.target %}color: var(--accent); font-weight: 600;{% endif %}">{{ p }}</span>
+                  {% if not loop.last %} &rarr; {% endif %}
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-xs">No downstream dependents depend on this module.</p>
+      {% endif %}
+    </div>
+
+    <!-- Affected Classes & Functions -->
+    {% if impact.affected_classes or impact.affected_functions %}
+    <div class="card" style="margin-bottom: 1.25rem;">
+      <h3 class="card-title">Static Call Site &amp; Class Inheritance Impact</h3>
+      {% if impact.affected_classes %}
+      <h4 style="font-size: 0.75rem; margin: 0.5rem 0 0.4rem 0; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+        Inherited Subclasses ({{ impact.affected_classes | length }})
+      </h4>
+      <div style="overflow-x: auto; margin-bottom: 1rem;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Target Class</th>
+              <th>Subclass (Downstream)</th>
+              <th>Defined In</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in impact.affected_classes %}
+            <tr>
+              <td><code class="mono">{{ c.parent_class }}</code> (line {{ c.line }})</td>
+              <td><code class="mono">{{ c.subclass }}</code></td>
+              <td><code class="mono">{{ c.subclass_module }}</code></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if impact.affected_functions %}
+      <h4 style="font-size: 0.75rem; margin: 0.5rem 0 0.4rem 0; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+        Function &amp; Method Call Sites ({{ impact.affected_functions | length }})
+      </h4>
+      <div style="overflow-x: auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Target Function</th>
+              <th>Caller Site (Downstream)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in impact.affected_functions %}
+            <tr>
+              <td><code class="mono">{{ f.target_function }}</code> (line {{ f.line }})</td>
+              <td><code class="mono">{{ f.caller }}</code></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="card empty-state">
+      <h3 style="font-size: 1.1rem; margin-bottom: 0.35rem;">Select a module from the left</h3>
+      <p class="text-muted text-xs">Choose any module to evaluate direct and transitive change impact.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const searchInput = document.getElementById('module-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      const q = this.value.toLowerCase().trim();
+      document.querySelectorAll('.impact-module-item').forEach(item => {
+        const text = item.getAttribute('data-name').toLowerCase();
+        item.style.display = text.includes(q) ? 'flex' : 'none';
+      });
+    });
+  }
+
+  {% if impact and impact.found and impact.subgraph_data %}
+  (function () {
+    const rawData = {{ impact.subgraph_data | tojson }};
+    const targetModule = {{ impact.target | tojson }};
+    const container = document.querySelector('.impact-graph-container');
+    if (!container || !rawData.nodes || rawData.nodes.length === 0) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const width = container.clientWidth || 700;
+        const height = container.clientHeight || 380;
+
+        const svg = d3.select("#impact-svg")
+          .attr("viewBox", [0, 0, width, height]);
+        svg.selectAll("*").remove();
+
+        svg.append("defs").append("marker")
+          .attr("id", "arrowhead")
+          .attr("viewBox", "0 -5 10 10")
+          .attr("refX", 18)
+          .attr("refY", 0)
+          .attr("markerWidth", 6)
+          .attr("markerHeight", 6)
+          .attr("orient", "auto")
+          .append("path")
+          .attr("d", "M0,-5L10,0L0,5")
+          .attr("fill", "#71717a");
+
+        const g = svg.append("g");
+
+        const zoom = d3.zoom()
+          .scaleExtent([0.3, 3])
+          .on("zoom", (e) => g.attr("transform", e.transform));
+        svg.call(zoom);
+
+        function nodeColor(d) {
+          if (d.id === targetModule) return "#2563eb";
+          if (d.is_test) return "#10b981";
+          if (d.role === "direct") return "#f59e0b";
+          return "#8b5cf6";
+        }
+
+        const nodes = rawData.nodes.map(d => ({ ...d }));
+        const links = rawData.links.map(d => ({ ...d }));
+
+        const simulation = d3.forceSimulation(nodes)
+          .force("link", d3.forceLink(links).id(d => d.id).distance(80))
+          .force("charge", d3.forceManyBody().strength(-220))
+          .force("center", d3.forceCenter(width / 2, height / 2))
+          .force("collision", d3.forceCollide().radius(22));
+
+        const link = g.append("g")
+          .selectAll("line")
+          .data(links)
+          .join("line")
+          .attr("class", "impact-edge")
+          .attr("marker-end", "url(#arrowhead)");
+
+        const node = g.append("g")
+          .selectAll("circle")
+          .data(nodes)
+          .join("circle")
+          .attr("class", "impact-node")
+          .attr("r", d => d.id === targetModule ? 13 : 8)
+          .attr("fill", nodeColor)
+          .call(d3.drag()
+            .on("start", (e, d) => {
+              if (!e.active) simulation.alphaTarget(0.3).restart();
+              d.fx = d.x; d.fy = d.y;
+            })
+            .on("drag", (e, d) => {
+              d.fx = e.x; d.fy = e.y;
+            })
+            .on("end", (e, d) => {
+              if (!e.active) simulation.alphaTarget(0);
+              d.fx = null; d.fy = null;
+            })
+          );
+
+        const labels = g.append("g")
+          .selectAll("text")
+          .data(nodes)
+          .join("text")
+          .attr("class", "impact-label")
+          .attr("dx", 12)
+          .attr("dy", 4)
+          .text(d => d.name || d.id);
+
+        node.append("title")
+          .text(d => `${d.id} (${d.role})\nLayer: ${d.layer}`);
+
+        simulation.on("tick", () => {
+          link
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+
+          node
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+
+          labels
+            .attr("x", d => d.x)
+            .attr("y", d => d.y);
+        });
+      });
+    });
+  })();
+  {% endif %}
+</script>
+{% endblock %}

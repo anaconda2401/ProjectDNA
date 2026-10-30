@@ -5,6 +5,7 @@ Parses each Python file with the built-in `ast` module and populates ModuleInfo 
 
 import ast
 import os
+import hashlib
 from typing import List, Optional
 
 from .project_model import ModuleInfo, ClassInfo, FunctionInfo, ImportInfo
@@ -23,14 +24,7 @@ def _dotted_name(node) -> str:
 
 
 def _get_docstring(node) -> Optional[str]:
-    if (
-        node.body
-        and isinstance(node.body[0], ast.Expr)
-        and isinstance(node.body[0].value, (ast.Constant, ast.Str))
-    ):
-        val = node.body[0].value
-        return val.s if isinstance(val, ast.Str) else val.value
-    return None
+    return ast.get_docstring(node)
 
 
 def _args_names(args: ast.arguments) -> List[str]:
@@ -172,7 +166,9 @@ def parse_file(abs_path: str, root: str) -> ModuleInfo:
     info = ModuleInfo(path=rel, abs_path=abs_path, module_name=module_name)
 
     try:
-        src = open(abs_path, encoding="utf-8", errors="replace").read()
+        with open(abs_path, encoding="utf-8", errors="replace") as f:
+            src = f.read()
+        info.file_hash = hashlib.sha256(src.encode("utf-8", errors="replace")).hexdigest()
         info.lines, info.blank_lines, info.comment_lines, info.code_lines = _count_lines(src)
         tree = ast.parse(src, filename=abs_path)
     except SyntaxError as e:

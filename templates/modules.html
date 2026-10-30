@@ -1,72 +1,231 @@
 {% extends "base.html" %}
-{% block title %}Files — {{ record.project_name }}{% endblock %}
+{% block title %}Module Explorer — {{ record.project_name }}{% endblock %}
 
 {% block content %}
-<div class="page-header page-header-sub">
-  <div class="breadcrumb">
-    <a href="{{ url_for('dashboard', analysis_id=record.id) }}">← {{ record.project_name }}</a>
+{% set active_nav = 'modules' %}
+{% include 'components/project_subnav.html' %}
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 0.2rem 0; letter-spacing: -0.02em;">Module &amp; File Catalog</h2>
+    <p class="text-sm text-muted" style="margin: 0;">Structural inventory of all <strong>{{ result.modules|length }}</strong> analyzed Python modules.</p>
   </div>
-  <h1>All Files</h1>
-  <p class="page-sub">{{ result.modules|length }} Python modules found</p>
 </div>
 
-<div class="card">
-  <div class="table-toolbar">
-    <input type="text" id="module-search" class="input input-sm" placeholder="Filter by path or module…" />
+<!-- High-Level Metric Strip -->
+{% set total_lines = result.summary.total_lines if result.summary else (result.modules | sum(attribute='lines')) %}
+{% set err_count = result.modules | selectattr('parse_error') | list | length %}
+{% set high_comp = result.modules | selectattr('complexity', 'ge', 20) | list | length %}
+
+<div class="metrics-panel grid-cols-4 animate-enter" style="margin-bottom: 1.5rem;">
+  <div class="metric-card">
+    <div class="metric-stat">{{ result.modules|length }}</div>
+    <div class="metric-label">Total Modules</div>
   </div>
-  <table class="table" id="modules-table">
-    <thead>
-      <tr>
-        <th>Path</th>
-        <th>Module</th>
-        <th>Layer</th>
-        <th class="text-right">Lines</th>
-        <th class="text-right">Classes</th>
-        <th class="text-right">Functions</th>
-        <th class="text-right">Complexity</th>
-        <th class="text-right">Imports</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for m in result.modules | sort(attribute='path') %}
-      <tr class="module-row" data-search="{{ m.path }} {{ m.module_name }}">
-        <td class="mono text-sm">
-          <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=m.path) }}" class="link-primary">
-            {{ m.path }}
-          </a>
-        </td>
-        <td class="mono text-sm text-muted">{{ m.module_name }}</td>
-        <td><span class="layer-tag layer-{{ m.layer }}">{{ m.layer }}</span></td>
-        <td class="text-right">{{ m.lines }}</td>
-        <td class="text-right">{{ m.classes | length }}</td>
-        <td class="text-right">{{ m.functions | length }}</td>
-        <td class="text-right">
-          <span class="complexity-badge complexity-{{ 'high' if m.complexity >= 20 else 'med' if m.complexity >= 8 else 'low' }}">
-            {{ m.complexity }}
-          </span>
-        </td>
-        <td class="text-right">{{ m.imports | length }}</td>
-        <td>
-          {% if m.parse_error %}
-            <span class="badge badge-error" title="{{ m.parse_error }}">error</span>
-          {% else %}
-            <span class="badge badge-ok">ok</span>
-          {% endif %}
-        </td>
-      </tr>
+  <div class="metric-card">
+    <div class="metric-stat">{{ "{:,}".format(total_lines) }}</div>
+    <div class="metric-label">Total Lines of Code</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-stat {% if high_comp > 0 %}text-warning{% endif %}">{{ high_comp }}</div>
+    <div class="metric-label">High Complexity (≥20)</div>
+  </div>
+  <div class="metric-card {% if err_count > 0 %}stat-error{% endif %}">
+    <div class="metric-stat" style="color: {% if err_count > 0 %}var(--red){% else %}var(--green){% endif %};">
+      {{ err_count if err_count > 0 else '0' }}
+    </div>
+    <div class="metric-label">Parse Errors</div>
+  </div>
+</div>
+
+<!-- Main Module Table Card -->
+<div class="card animate-enter">
+  <!-- Filter & Search Toolbar -->
+  <div style="display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 1.25rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+      <div style="position: relative; flex: 1; min-width: 260px; max-width: 440px;">
+        <input 
+          type="text" 
+          id="module-search" 
+          class="input input-sm" 
+          placeholder="Filter by path or module name… (Press '/' to focus)" 
+          style="width: 100%;"
+        />
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+        <span class="text-muted text-sm">Complexity:</span>
+        <select id="complexity-filter" class="input input-sm" style="width: auto;">
+          <option value="all">All Complexity</option>
+          <option value="low">Low (&lt; 8)</option>
+          <option value="med">Medium (8 - 19)</option>
+          <option value="high">High (≥ 20)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Layer Quick Filter Pills -->
+    {% set layers = [] %}
+    {% for m in result.modules %}
+      {% if m.layer not in layers %}
+        {% set _ = layers.append(m.layer) %}
+      {% endif %}
+    {% endfor %}
+    <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;" id="layer-pills">
+      <span class="text-muted text-xs font-semibold" style="text-transform: uppercase; margin-right: 0.25rem;">Layer:</span>
+      <button class="filter-btn active layer-filter-btn" data-layer="all">
+        All <span class="badge" style="font-size:0.68rem; padding:0.1rem 0.35rem;">{{ result.modules|length }}</span>
+      </button>
+      {% for lay in layers | sort %}
+        {% set cnt = result.modules | selectattr('layer', 'equalto', lay) | list | length %}
+        <button class="filter-btn layer-filter-btn" data-layer="{{ lay }}">
+          {{ lay }} <span class="badge" style="font-size:0.68rem; padding:0.1rem 0.35rem;">{{ cnt }}</span>
+        </button>
       {% endfor %}
-    </tbody>
-  </table>
+    </div>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="table" id="modules-table">
+      <thead>
+        <tr>
+          <th>Module Path</th>
+          <th>Layer</th>
+          <th class="text-right">Lines</th>
+          <th class="text-right">Classes</th>
+          <th class="text-right">Functions</th>
+          <th class="text-right">Complexity</th>
+          <th class="text-right">Imports</th>
+          <th>Status</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in result.modules | sort(attribute='path') %}
+        <tr class="module-row" 
+            data-search="{{ m.path }} {{ m.module_name }}"
+            data-layer="{{ m.layer }}"
+            data-complexity="{{ m.complexity }}">
+          <td>
+            <div style="display: flex; align-items: center; gap: 0.45rem;">
+              <button 
+                class="btn-copy" 
+                title="Copy module path" 
+                onclick="copyTextToClipboard('{{ m.path }}', 'Path', this)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              </button>
+              <div>
+                <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=m.path) }}" class="link-primary mono text-sm" style="font-weight: 500;">
+                  {{ m.path }}
+                </a>
+                <div class="text-muted mono text-xs">
+                  {{ m.module_name }}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td><span class="layer-tag">{{ m.layer }}</span></td>
+          <td class="text-right mono text-sm">{{ "{:,}".format(m.lines) }}</td>
+          <td class="text-right mono text-sm">{{ m.classes | length }}</td>
+          <td class="text-right mono text-sm">{{ m.functions | length }}</td>
+          <td class="text-right">
+            <span class="complexity-badge complexity-{{ 'high' if m.complexity >= 20 else 'med' if m.complexity >= 8 else 'low' }}">
+              {{ m.complexity }}
+            </span>
+          </td>
+          <td class="text-right text-muted mono text-sm">{{ m.imports | length }}</td>
+          <td>
+            {% if m.parse_error %}
+              <span class="badge badge-error" title="{{ m.parse_error }}">Parse Error</span>
+            {% else %}
+              <span class="badge badge-ok">Ready</span>
+            {% endif %}
+          </td>
+          <td class="text-right" style="white-space: nowrap;">
+            <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=m.path) }}" class="btn-b2b-secondary btn-sm" style="margin-right: 0.25rem;">
+              Details
+            </a>
+            <a href="{{ url_for('impact_view', analysis_id=record.id, target=m.module_name) }}" class="btn-b2b-secondary btn-sm" title="Analyze change blast radius">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="margin-right: 2px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Impact
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="no-modules-match" class="empty-state" style="display: none;">
+    <p style="font-weight: 500; margin-bottom: 0.35rem;">No matching modules found</p>
+    <p class="text-muted text-sm">Try broadening your search term or clearing the layer/complexity filters.</p>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  document.getElementById('module-search').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.module-row').forEach(row => {
-      row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+  let activeLayer = 'all';
+  let activeComplexity = 'all';
+  let activeSearch = '';
+
+  const searchInput = document.getElementById('module-search');
+  const compSelect = document.getElementById('complexity-filter');
+  const noMatchNotice = document.getElementById('no-modules-match');
+  const layerButtons = document.querySelectorAll('.layer-filter-btn');
+
+  function applyFilters() {
+    let visibleCount = 0;
+    const rows = document.querySelectorAll('.module-row');
+
+    rows.forEach(row => {
+      const search = (row.dataset.search || '').toLowerCase();
+      const layer = (row.dataset.layer || '');
+      const comp = parseInt(row.dataset.complexity || '0', 10);
+
+      const matchSearch = !activeSearch || search.includes(activeSearch);
+      const matchLayer = (activeLayer === 'all') || (layer === activeLayer);
+
+      let matchComp = true;
+      if (activeComplexity === 'low') {
+        matchComp = comp < 8;
+      } else if (activeComplexity === 'med') {
+        matchComp = comp >= 8 && comp < 20;
+      } else if (activeComplexity === 'high') {
+        matchComp = comp >= 20;
+      }
+
+      const isVisible = matchSearch && matchLayer && matchComp;
+      row.style.display = isVisible ? '' : 'none';
+      if (isVisible) visibleCount++;
+    });
+
+    if (noMatchNotice) {
+      noMatchNotice.style.display = (visibleCount === 0) ? 'block' : 'none';
+    }
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      activeSearch = (this.value || '').toLowerCase().trim();
+      applyFilters();
+    });
+  }
+
+  if (compSelect) {
+    compSelect.addEventListener('change', function() {
+      activeComplexity = this.value;
+      applyFilters();
+    });
+  }
+
+  layerButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      layerButtons.forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      activeLayer = this.dataset.layer || 'all';
+      applyFilters();
     });
   });
 </script>

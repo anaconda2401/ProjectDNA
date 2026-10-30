@@ -35,15 +35,48 @@ venv.bak/
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
 projectdna.db
 
 # User uploads & temporary extraction directories
 uploads/*
 !uploads/.gitkeep
+extracted/
+temp/
+
+# Generated images, dashboard charts, diagrams & exported reports
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.ico
+exports/
+generated_images/
+dashboard_images/
+charts/
+screenshots/
+projectdna-report-*.html
+reports/*.html
+!templates/report.html
+
+# Session storage & runtime cache
+flask_session/
+.flask_session/
+sessions/
+session/
+*.session
+*.session-journal
+session_data/
+.webassets-cache/
 
 # Environment variables & local secrets
 .env
 .env.*
+.env.local
 !.env.example
 
 # Testing & code quality caches

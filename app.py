@@ -16,6 +16,16 @@ from werkzeug.utils import secure_filename
 
 import database as db
 from analyzer.pipeline import run_pipeline
+from analyzer.impact_analyzer import (
+    analyze_change_impact_from_result,
+    compute_all_impact_summaries,
+)
+from analyzer.drift_detector import compare_snapshots
+from analyzer.module_discovery import discover_refactoring_from_result
+from analyzer.risk_analyzer import analyze_architecture_risks_from_result
+from ai_architect.service import AIArchitectService
+
+ai_architect_service = AIArchitectService()
 
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
@@ -341,11 +351,284 @@ def api_graph(analysis_id: int):
     return jsonify(record['result']['graph_imports'])
 
 
+@app.route('/impact/<int:analysis_id>')
+def impact_view(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        abort(404)
+    result = record['result']
+    impact_summaries = result.get('impact_summaries')
+
+    # If historical record lacks impact_summaries, synthesize or compute
+    if not impact_summaries:
+        impact_summaries = []
+        for m in result.get('modules', []):
+            mod_name = m.get('module_name')
+            if mod_name:
+                mod_impact = analyze_change_impact_from_result(result, mod_name)
+                impact_summaries.append({
+                    'module_name': mod_name,
+                    'path': m.get('path', ''),
+                    'layer': m.get('layer', 'other'),
+                    'direct_count': len(mod_impact.get('direct_dependents', [])),
+                    'transitive_count': len(mod_impact.get('transitive_dependents', [])),
+                    'total_dependents': mod_impact.get('total_affected_count', 0),
+                    'affected_tests_count': len(mod_impact.get('affected_tests', [])),
+                    'risk_level': mod_impact.get('risk_level', 'LOW'),
+                    'risk_score': mod_impact.get('risk_score', 0),
+                    'explanation': mod_impact.get('explanation', ''),
+                    'in_cycle': mod_impact.get('in_cycle', False),
+                    'in_degree': mod_impact.get('target_info', {}).get('in_degree', 0),
+                    'out_degree': mod_impact.get('target_info', {}).get('out_degree', 0),
+                })
+        impact_summaries.sort(key=lambda s: (s['risk_score'], s['total_dependents']), reverse=True)
+
+    target = request.args.get('target', '').strip()
+    if not target and impact_summaries:
+        target = impact_summaries[0]['module_name']
+    elif not target and result.get('modules'):
+        target = result['modules'][0]['module_name']
+
+    impact = analyze_change_impact_from_result(result, target) if target else None
+
+    return render_template(
+        'impact.html',
+        record=record,
+        result=result,
+        impact_summaries=impact_summaries,
+        current_target=target,
+        impact=impact,
+    )
+
+
+@app.route('/api/impact/<int:analysis_id>')
+def api_impact(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        return jsonify({'error': 'Analysis not found'}), 404
+    module_name = request.args.get('module', '').strip()
+    if not module_name:
+        return jsonify({'error': 'Parameter "module" is required'}), 400
+    impact = analyze_change_impact_from_result(record['result'], module_name)
+    return jsonify(impact)
+
+
+@app.route('/drift/<int:analysis_id>')
+def drift_view(analysis_id: int):
+    target_record = db.load_analysis(analysis_id)
+    if target_record is None:
+        abort(404)
+
+    project_name = target_record['project_name']
+    project_snapshots = db.list_analyses_for_project(project_name)
+
+    # Check if specific target_id and base_id passed
+    req_target_id = request.args.get('target_id', type=int)
+    req_base_id = request.args.get('base_id', type=int)
+
+    if req_target_id and req_target_id != analysis_id:
+        target_record = db.load_analysis(req_target_id) or target_record
+
+    base_record = None
+    if req_base_id:
+        base_record = db.load_analysis(req_base_id)
+    else:
+        # Default base to the next older snapshot for this project if exists
+        for snap in project_snapshots:
+            if snap['id'] < target_record['id']:
+                base_record = db.load_analysis(snap['id'])
+                break
+        if base_record is None:
+            # Fallback to comparing with itself or earliest
+            base_record = target_record
+
+    drift = compare_snapshots(
+        base=base_record['result'],
+        target=target_record['result'],
+        base_label=f"#{base_record['id']} ({base_record['created_at']})",
+        target_label=f"#{target_record['id']} ({target_record['created_at']})",
+    ) if base_record and target_record else None
+
+    return render_template(
+        'drift.html',
+        record=target_record,
+        base_record=base_record,
+        target_record=target_record,
+        project_snapshots=project_snapshots,
+        drift=drift,
+    )
+
+
+@app.route('/api/drift')
+def api_drift():
+    base_id = request.args.get('base_id', type=int)
+    target_id = request.args.get('target_id', type=int)
+    if not base_id or not target_id:
+        return jsonify({'error': 'Both base_id and target_id are required.'}), 400
+
+    base_record = db.load_analysis(base_id)
+    target_record = db.load_analysis(target_id)
+    if not base_record or not target_record:
+        return jsonify({'error': 'One or both snapshot IDs not found.'}), 404
+
+    drift = compare_snapshots(
+        base=base_record['result'],
+        target=target_record['result'],
+        base_label=f"#{base_record['id']}",
+        target_label=f"#{target_record['id']}",
+    )
+    return jsonify(drift)
+
+
+@app.route('/discovery/<int:analysis_id>')
+def discovery_view(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        abort(404)
+    result = record['result']
+    recommendations = result.get('refactoring_recommendations')
+    if not recommendations:
+        recommendations = discover_refactoring_from_result(result)
+
+    return render_template(
+        'discovery.html',
+        record=record,
+        result=result,
+        recommendations=recommendations,
+    )
+
+
+@app.route('/api/discovery/<int:analysis_id>')
+def api_discovery(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        return jsonify({'error': 'Analysis not found'}), 404
+    result = record['result']
+    recommendations = result.get('refactoring_recommendations')
+    if not recommendations:
+        recommendations = discover_refactoring_from_result(result)
+    return jsonify(recommendations)
+
+
+@app.route('/risks/<int:analysis_id>')
+def risks_view(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        abort(404)
+    result = record['result']
+    risk_analysis = result.get('architecture_risks')
+    if not risk_analysis:
+        risk_analysis = analyze_architecture_risks_from_result(result)
+
+    return render_template(
+        'risks.html',
+        record=record,
+        result=result,
+        risk_analysis=risk_analysis,
+    )
+
+
+@app.route('/api/risks/<int:analysis_id>')
+def api_risks(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        return jsonify({'error': 'Analysis not found'}), 404
+
+    # Allow custom weights via query parameters
+    custom_weights = {}
+    for k in ["cycles", "complexity", "coupling", "layer_violations", "test_absence"]:
+        val = request.args.get(f"w_{k}", type=float)
+        if val is not None:
+            custom_weights[k] = val
+
+    risk_analysis = analyze_architecture_risks_from_result(
+        record['result'], weights=custom_weights if custom_weights else None
+    )
+    return jsonify(risk_analysis)
+
+
 @app.route('/delete/<int:analysis_id>', methods=['POST'])
 def delete_analysis(analysis_id: int):
     db.delete_analysis(analysis_id)
     flash('Analysis deleted.', 'info')
     return redirect(url_for('index'))
+
+
+# ---------------------------------------------------------------------------
+# AI Architect Routes
+# ---------------------------------------------------------------------------
+@app.route('/ai-architect/<int:analysis_id>')
+def ai_architect_view(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        abort(404)
+    result = record['result']
+    latest_review = db.get_latest_ai_review(analysis_id)
+    return render_template(
+        'ai_architect.html',
+        record=record,
+        result=result,
+        latest_review=latest_review,
+        groq_available=ai_architect_service.groq_client.is_available(),
+    )
+
+
+@app.route('/api/ai-review/<int:analysis_id>', methods=['GET', 'POST'])
+def api_ai_review(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        return jsonify({'error': 'Analysis not found'}), 404
+
+    if request.method == 'GET':
+        review = db.get_latest_ai_review(analysis_id)
+        if not review:
+            return jsonify({'review': None, 'message': 'No review generated yet.'})
+        return jsonify(review)
+
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', 'auto')
+
+    review_resp = ai_architect_service.run_review(record['result'], mode=mode)
+    review_dict = review_resp.to_dict()
+
+    try:
+        db.save_ai_review(analysis_id, review_dict)
+    except Exception as e:
+        app.logger.warning(f"Could not persist review to DB: {e}")
+
+    return jsonify(review_dict)
+
+
+@app.route('/api/ai-plan/<int:analysis_id>', methods=['POST'])
+def api_ai_plan(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        return jsonify({'error': 'Analysis not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    proposed_change = str(data.get('proposed_change', '')).strip()
+    if not proposed_change:
+        return jsonify({'error': 'proposed_change is required'}), 400
+
+    mode = data.get('mode', 'auto')
+    plan_resp = ai_architect_service.plan_change(proposed_change, record['result'], mode=mode)
+    return jsonify(plan_resp.to_dict())
+
+
+@app.route('/api/ai-ask/<int:analysis_id>', methods=['POST'])
+def api_ai_ask(analysis_id: int):
+    record = db.load_analysis(analysis_id)
+    if record is None:
+        return jsonify({'error': 'Analysis not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    question = str(data.get('question', '')).strip()
+    if not question:
+        return jsonify({'error': 'question is required'}), 400
+
+    mode = data.get('mode', 'auto')
+    ask_resp = ai_architect_service.ask_question(question, record['result'], mode=mode)
+    return jsonify(ask_resp.to_dict())
 
 
 # ---------------------------------------------------------------------------

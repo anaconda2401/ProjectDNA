@@ -3,107 +3,159 @@
 
 {% block content %}
 {% set summary = result.summary %}
+{% set active_nav = 'dashboard' %}
+{% include 'components/project_subnav.html' %}
 
-<div class="analysis-header">
-  <div class="analysis-title-row">
-    <div>
-      <h1>{{ record.project_name }}</h1>
-      <span class="text-muted text-sm">Analyzed {{ record.created_at }} &mdash; {{ result.elapsed }}s</span>
-    </div>
-    <div class="header-actions">
-      <a href="{{ url_for('architecture', analysis_id=record.id) }}" class="btn btn-secondary">Architecture Graph</a>
-      <a href="{{ url_for('modules', analysis_id=record.id) }}" class="btn btn-secondary">All Files</a>
-      <a href="{{ url_for('report', analysis_id=record.id) }}" class="btn btn-secondary" target="_blank">↓ Export Report</a>
-    </div>
-  </div>
-  {% if result.scan_warnings %}
-  <div class="warnings-bar">
-    <span class="warning-icon">⚠</span>
-    {{ result.scan_warnings | length }} scan warning(s):
-    <details><summary>Show</summary>
-      <ul class="warning-list">{% for w in result.scan_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+{% if result.scan_warnings %}
+<div class="flash flash-warning animate-enter" style="margin-top: -0.5rem; margin-bottom: 1.25rem;">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <div style="flex: 1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+    <span><strong>{{ result.scan_warnings | length }} Scan Warning{{ 's' if result.scan_warnings | length > 1 }}</strong></span>
+    <details style="font-size: 0.78rem;"><summary style="cursor: pointer; color: var(--text);">View Details</summary>
+      <ul style="margin: 0.4rem 0 0 1.25rem; padding: 0;">
+        {% for w in result.scan_warnings %}<li>{{ w }}</li>{% endfor %}
+      </ul>
     </details>
   </div>
-  {% endif %}
 </div>
+{% endif %}
 
-<!-- Stat cards -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-value">{{ summary.total_files }}</div>
-    <div class="stat-label">Files</div>
+<!-- High-Density Metric Cards Grid (Vercel Flat Style) -->
+<div class="metrics-panel animate-enter">
+  <!-- Card 1: Files -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ summary.total_files }}</div>
+    <div class="metric-label">Files</div>
   </div>
-  <div class="stat-card {% if summary.error_files > 0 %}stat-warn{% endif %}">
-    <div class="stat-value">{{ summary.parsed_files }}</div>
-    <div class="stat-label">Parsed OK
-      {% if summary.error_files > 0 %}<span class="badge badge-error">{{ summary.error_files }} err</span>{% endif %}
+
+  <!-- Card 2: Parsed OK -->
+  <div class="metric-card {% if summary.error_files > 0 %}stat-warn{% endif %}">
+    <div class="metric-stat">
+      <span>{{ summary.parsed_files }}</span>
+      {% if summary.error_files > 0 %}
+        <span class="badge badge-error" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;">
+          {{ summary.error_files }} err
+        </span>
+      {% endif %}
     </div>
+    <div class="metric-label">Parsed OK</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ "{:,}".format(summary.total_lines) }}</div>
-    <div class="stat-label">Total Lines</div>
+
+  <!-- Card 3: Code Lines -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ "{:,}".format(summary.get('total_code_lines', 0)) }}</div>
+    <div class="metric-label">Code Lines</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ "{:,}".format(summary.get('total_code_lines', 0)) }}</div>
-    <div class="stat-label">Code Lines</div>
+
+  <!-- Card 4: Total Lines -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ "{:,}".format(summary.total_lines) }}</div>
+    <div class="metric-label">Total Lines</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ summary.total_classes }}</div>
-    <div class="stat-label">Classes</div>
+
+  <!-- Card 5: Avg Complexity -->
+  <div class="metric-card {% if summary.avg_complexity > 8 %}stat-warn{% endif %}">
+    <div class="metric-stat">
+      <span>{{ summary.avg_complexity }}</span>
+      <span class="text-xs text-muted" style="font-weight: 500;">CC</span>
+    </div>
+    <div class="metric-label">Avg Complexity</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ summary.total_functions }}</div>
-    <div class="stat-label">Functions</div>
+
+  <!-- Card 6: Classes -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ summary.total_classes }}</div>
+    <div class="metric-label">Classes</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ summary.get('total_methods', 0) }}</div>
-    <div class="stat-label">Methods</div>
+
+  <!-- Card 7: Functions -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ summary.total_functions }}</div>
+    <div class="metric-label">Functions</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ summary.get('total_imports', 0) }}</div>
-    <div class="stat-label">Imports</div>
+
+  <!-- Card 8: Methods -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ summary.get('total_methods', 0) }}</div>
+    <div class="metric-label">Methods</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ summary.get('external_library_count', 0) }}</div>
-    <div class="stat-label">Ext. Libraries</div>
+
+  <!-- Card 9: Direct Imports -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ summary.get('total_imports', 0) }}</div>
+    <div class="metric-label">Direct Imports</div>
   </div>
-  <div class="stat-card {% if summary.avg_complexity > 5 %}stat-warn{% endif %}">
-    <div class="stat-value">{{ summary.avg_complexity }}</div>
-    <div class="stat-label">Avg Complexity</div>
+
+  <!-- Card 10: External Libraries -->
+  <div class="metric-card">
+    <div class="metric-stat">{{ summary.get('external_library_count', 0) }}</div>
+    <div class="metric-label">Ext. Libraries</div>
   </div>
 </div>
 
-<!-- Section tab navigation -->
-<div class="section-tab-nav">
-  <button class="section-tab-btn active" data-section="overview">Overview</button>
-  <button class="section-tab-btn" data-section="classes">
-    Classes <span class="tab-count">{{ summary.total_classes }}</span>
+<!-- Section View Tabs (Linear / Vercel Segmented Control) -->
+<div class="segmented-control" role="tablist" aria-label="Dashboard sections">
+  <button class="segmented-btn section-tab-btn active" data-section="overview" role="tab" aria-selected="true">
+    <span>Overview</span>
   </button>
-  <button class="section-tab-btn" data-section="functions">
-    Functions <span class="tab-count">{{ summary.total_functions + summary.get('total_methods', 0) }}</span>
+  <button class="segmented-btn section-tab-btn" data-section="classes" role="tab" aria-selected="false">
+    <span>Classes</span>
+    <span class="segmented-badge">{{ summary.total_classes }}</span>
   </button>
-  <button class="section-tab-btn" data-section="dependencies">Dependencies</button>
-  <button class="section-tab-btn" data-section="metrics">Metrics</button>
-  <button class="section-tab-btn" data-section="issues">
-    Issues
+  <button class="segmented-btn section-tab-btn" data-section="functions" role="tab" aria-selected="false">
+    <span>Functions</span>
+    <span class="segmented-badge">{{ summary.total_functions + summary.get('total_methods', 0) }}</span>
+  </button>
+  <button class="segmented-btn section-tab-btn" data-section="dependencies" role="tab" aria-selected="false">
+    <span>Dependencies</span>
+  </button>
+  <button class="segmented-btn section-tab-btn" data-section="metrics" role="tab" aria-selected="false">
+    <span>Metrics</span>
+  </button>
+  <button class="segmented-btn section-tab-btn" data-section="issues" role="tab" aria-selected="false">
+    <span>Issues</span>
     {% set errors = result.issues | selectattr('level','equalto','error') | list %}
-    {% if errors %}<span class="tab-count tab-count-error">{{ errors|length }}</span>{% endif %}
+    {% if errors %}
+      <span class="segmented-badge badge-err">{{ errors|length }}</span>
+    {% endif %}
   </button>
 </div>
 
 <!-- ============================================================ -->
 <!-- OVERVIEW -->
 <!-- ============================================================ -->
-<div id="section-overview" class="section-content">
+<div id="section-overview" class="section-content animate-enter">
+  <!-- Minimalist Clean Callout Banner (Not Over-AI) -->
+  <div class="callout-card">
+    <div class="callout-left">
+      <div class="callout-icon-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+      </div>
+      <div>
+        <h3 class="callout-title">AI Architecture &amp; Change Impact Intelligence</h3>
+        <p class="callout-desc">
+          Automated structural defect detection, prioritized refactoring backlog, and blast radius calculations verified against deterministic AST graphs.
+        </p>
+      </div>
+    </div>
+    <a href="{{ url_for('ai_architect_view', analysis_id=record.id) }}" class="btn-b2b-primary">
+      <span>Open AI Architect</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+  </div>
+
   <div class="dashboard-grid">
 
-    <!-- Issues summary -->
+    <!-- 1. Issues Summary Card -->
     <div class="card">
-      <h2 class="card-title">Issues Overview</h2>
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Issues Overview</h2>
+        <span class="badge">Static Heuristics</span>
+      </div>
       {% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
       {% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
       {% set infos    = result.issues | selectattr('level','equalto','info')    | list %}
-      <div class="issue-summary-row">
+      <div class="issue-summary-row" style="margin-top: 0.75rem;">
         <div class="issue-count issue-error"><span class="ic-num">{{ errors|length }}</span><span class="ic-label">Errors</span></div>
         <div class="issue-count issue-warning"><span class="ic-num">{{ warnings|length }}</span><span class="ic-label">Warnings</span></div>
         <div class="issue-count issue-info"><span class="ic-num">{{ infos|length }}</span><span class="ic-label">Info</span></div>
@@ -111,86 +163,204 @@
       {% if result.issues %}
         <ul class="issue-list-preview">
           {% for issue in result.issues[:5] %}
-          <li class="issue-item issue-{{ issue.level }}">
-            <span class="issue-badge badge badge-{{ issue.level }}">{{ issue.level }}</span>
-            <span class="issue-title">{{ issue.title }}</span>
-            {% if issue.location %}<code class="issue-loc">{{ issue.location }}</code>{% endif %}
+          <li class="issue-item">
+            <span class="badge badge-{{ issue.level }}">{{ issue.level }}</span>
+            <span class="issue-title" title="{{ issue.title }}">{{ issue.title }}</span>
+            {% if issue.location %}<code class="issue-loc" title="{{ issue.location }}">{{ issue.location }}</code>{% endif %}
           </li>
           {% endfor %}
         </ul>
-        <button class="link-more btn-link" onclick="switchSection('issues')">View all {{ result.issues|length }} issues →</button>
+        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-light);">
+          <button class="btn-link" onclick="switchSection('issues')">View all {{ result.issues|length }} issues →</button>
+        </div>
       {% else %}
-        <p class="empty-state">No issues detected. 🎉</p>
+        <p class="empty-state" style="padding: 1.5rem 0;">No issues detected. Clean architecture!</p>
       {% endif %}
     </div>
 
-    <!-- Top complex modules -->
+    <!-- 2. Top Complex Modules Card -->
     <div class="card">
-      <h2 class="card-title">Complexity Hotspots</h2>
-      <table class="table">
-        <thead><tr><th>Module</th><th>Lines</th><th>Complexity</th><th>Fns</th></tr></thead>
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Complexity Hotspots</h2>
+        <span class="badge">Top 8 by CC</span>
+      </div>
+      <table class="table" style="margin-top:0.75rem;">
+        <thead>
+          <tr>
+            <th>Module</th>
+            <th class="text-right">Lines</th>
+            <th class="text-right">Complexity</th>
+            <th class="text-right">Fns</th>
+          </tr>
+        </thead>
         <tbody>
           {% for row in result.module_metrics[:8] %}
           <tr>
-            <td><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary mono text-sm">{{ row.path }}</a></td>
-            <td class="text-right">{{ row.lines }}</td>
-            <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.complexity >= 20 else 'med' if row.complexity >= 8 else 'low' }}">{{ row.complexity }}</span></td>
-            <td class="text-right">{{ row.functions + row.methods }}</td>
+            <td class="mono text-sm">
+              <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary" title="{{ row.path }}">
+                {{ row.path }}
+              </a>
+            </td>
+            <td class="text-right mono text-sm">{{ "{:,}".format(row.lines) }}</td>
+            <td class="text-right">
+              <span class="complexity-badge complexity-{{ 'high' if row.complexity >= 20 else 'med' if row.complexity >= 8 else 'low' }}">
+                {{ row.complexity }}
+              </span>
+            </td>
+            <td class="text-right mono text-sm text-muted">{{ row.functions + row.methods }}</td>
           </tr>
           {% else %}<tr><td colspan="4" class="empty-state">No data</td></tr>{% endfor %}
         </tbody>
       </table>
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-light);">
+        <a href="{{ url_for('modules', analysis_id=record.id) }}" class="btn-link">Explore all {{ result.modules|length }} files &amp; modules →</a>
+      </div>
     </div>
 
-    <!-- Architectural Layers -->
+    <!-- 3. Architectural Layers Card -->
     <div class="card">
-      <h2 class="card-title">Architectural Layers</h2>
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Architectural Layers</h2>
+        <span class="badge">AST Classifications</span>
+      </div>
       {% set layer_counts = {} %}
       {% for m in result.modules %}{% set _ = layer_counts.update({m.layer: (layer_counts.get(m.layer, 0) + 1)}) %}{% endfor %}
-      <div class="layer-chart">
+      <div class="layer-chart" style="margin-top:0.85rem;">
         {% for layer, count in layer_counts.items() | sort(attribute='1', reverse=true) %}
         {% set pct = (count / result.modules|length * 100) | round(1) %}
         <div class="layer-row">
-          <span class="layer-name layer-{{ layer }}">{{ layer }}</span>
-          <div class="layer-bar-wrap"><div class="layer-bar" style="width: {{ pct }}%"></div></div>
-          <span class="layer-count">{{ count }}</span>
+          <span class="layer-name">{{ layer }}</span>
+          <div class="layer-bar-wrap">
+            <div class="layer-bar" style="width: {{ pct }}%"></div>
+          </div>
+          <div class="layer-count-group">
+            <span class="mono">{{ count }}</span>
+            <span class="text-muted text-xs">({{ pct }}%)</span>
+          </div>
         </div>
         {% endfor %}
       </div>
     </div>
 
-    <!-- External libraries -->
+    <!-- 4. External Libraries Card -->
     <div class="card">
-      <h2 class="card-title">External Libraries</h2>
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">External Libraries</h2>
+        <span class="badge">{{ result.external_libraries|length }} Detected</span>
+      </div>
       {% if result.external_libraries %}
-      <table class="table">
-        <thead><tr><th>Library</th><th class="text-right">Used by</th></tr></thead>
-        <tbody>
-          {% for lib in result.external_libraries[:12] %}
+      <table class="table" style="margin-top:0.75rem;">
+        <thead>
           <tr>
-            <td class="mono text-sm">{{ lib.name }}</td>
-            <td class="text-right text-muted">{{ lib.usage_count }} module{{ 's' if lib.usage_count != 1 }}</td>
+            <th>Library</th>
+            <th class="text-right">Usage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lib in result.external_libraries[:8] %}
+          <tr>
+            <td class="mono text-sm font-medium">{{ lib.name }}</td>
+            <td class="text-right">
+              {% if lib.usage_count > 0 %}
+                <span class="mono text-sm font-semibold">{{ lib.usage_count }}</span>
+                <span class="text-xs text-muted">module{{ 's' if lib.usage_count != 1 }}</span>
+              {% else %}
+                <span class="badge" style="font-size:0.68rem;">Declared, unused</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+      {% if result.external_libraries|length > 8 %}
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-light);">
+        <button class="btn-link" onclick="switchSection('dependencies')">View all {{ result.external_libraries|length }} libraries →</button>
+      </div>
+      {% endif %}
       {% else %}
-        <p class="empty-state">No external libraries detected.</p>
+        <p class="empty-state" style="padding: 1.5rem 0;">No external libraries detected.</p>
       {% endif %}
     </div>
 
-    <!-- Most imported modules -->
+    <!-- 5. Change Impact Hotspots Card -->
+    {% if result.impact_summaries %}
     <div class="card">
-      <h2 class="card-title">Most Imported Modules</h2>
-      <table class="table">
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Change Impact Hotspots</h2>
+        <span class="badge">Blast Radius</span>
+      </div>
+      <table class="table" style="margin-top:0.75rem;">
+        <thead><tr><th>Module</th><th>Risk</th><th class="text-right">Dependents</th><th class="text-right"></th></tr></thead>
+        <tbody>
+          {% for row in result.impact_summaries[:6] %}
+          <tr>
+            <td class="mono text-sm">
+              <a href="{{ url_for('impact_view', analysis_id=record.id, target=row.module_name) }}" class="link-primary" title="{{ row.module_name }}">
+                {{ row.module_name }}
+              </a>
+            </td>
+            <td><span class="badge badge-{{ row.risk_level | lower }}">{{ row.risk_level }}</span></td>
+            <td class="text-right mono text-sm font-semibold">{{ row.total_dependents }}</td>
+            <td class="text-right">
+              <a href="{{ url_for('impact_view', analysis_id=record.id, target=row.module_name) }}" class="btn-link text-xs">Analyze →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-light);">
+        <a href="{{ url_for('impact_view', analysis_id=record.id) }}" class="btn-link">Explore Change Impact Matrix →</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 6. Architecture Risks Summary Card -->
+    {% if result.architecture_risks %}
+    <div class="card">
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Top Architectural Risks</h2>
+        {% set pr = result.architecture_risks.project_risk %}
+        <span class="badge badge-{{ pr.risk_level | lower }}" style="font-size: 0.72rem;">
+          {{ pr.risk_level }} ({{ pr.risk_score }}/100)
+        </span>
+      </div>
+      <table class="table" style="margin-top:0.75rem;">
+        <thead><tr><th>Component</th><th>Priority</th><th>Evidence</th></tr></thead>
+        <tbody>
+          {% for r in result.architecture_risks.prioritized_risks[:5] %}
+          <tr>
+            <td class="mono text-sm"><code>{{ r.component }}</code></td>
+            <td><span class="badge badge-{{ r.priority | lower }}">{{ r.priority }}</span></td>
+            <td class="text-muted text-sm" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ r.evidence }}">
+              {{ r.evidence }}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="empty-state">No elevated risks.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-light);">
+        <a href="{{ url_for('risks_view', analysis_id=record.id) }}" class="btn-link">View Full Risk Backlog →</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 7. Most Imported Modules -->
+    <div class="card">
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Most Imported Modules</h2>
+        <span class="badge">Centrality</span>
+      </div>
+      <table class="table" style="margin-top:0.75rem;">
         <thead><tr><th>Module</th><th class="text-right">Imported by</th><th class="text-right">Imports</th></tr></thead>
         <tbody>
           {% for row in result.module_metrics | sort(attribute='in_degree', reverse=true) | list %}
           {% if loop.index <= 8 %}
           <tr>
             <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.module.split('.')[-1] }}</a></td>
-            <td class="text-right">{{ row.in_degree }}</td>
-            <td class="text-right">{{ row.out_degree }}</td>
+            <td class="text-right mono text-sm font-semibold">{{ row.in_degree }}</td>
+            <td class="text-right mono text-sm text-muted">{{ row.out_degree }}</td>
           </tr>
           {% endif %}
           {% else %}<tr><td colspan="3" class="empty-state">No dependency data</td></tr>{% endfor %}
@@ -198,15 +368,18 @@
       </table>
     </div>
 
-    <!-- LOC breakdown -->
+    <!-- 8. LOC Breakdown -->
     <div class="card">
-      <h2 class="card-title">Lines of Code Breakdown</h2>
+      <div class="card-header-row">
+        <h2 class="card-title" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Lines of Code Breakdown</h2>
+        <span class="badge">{{ "{:,}".format(summary.total_lines) }} Total</span>
+      </div>
       {% set total_l = summary.total_lines %}
       {% if total_l > 0 %}
       {% set code_pct    = (summary.get('total_code_lines',0)    / total_l * 100) | round(1) %}
       {% set comment_pct = (summary.get('total_comment_lines',0) / total_l * 100) | round(1) %}
       {% set blank_pct   = (summary.get('total_blank_lines',0)   / total_l * 100) | round(1) %}
-      <div class="loc-chart">
+      <div class="loc-chart" style="margin-top:0.85rem;">
         <div class="loc-row">
           <span class="loc-label">Code</span>
           <div class="layer-bar-wrap"><div class="layer-bar loc-bar-code" style="width:{{ code_pct }}%"></div></div>
@@ -224,7 +397,7 @@
         </div>
       </div>
       {% else %}
-        <p class="empty-state">No data.</p>
+        <p class="empty-state" style="padding: 1.5rem 0;">No data.</p>
       {% endif %}
     </div>
 
@@ -234,89 +407,98 @@
 <!-- ============================================================ -->
 <!-- CLASSES -->
 <!-- ============================================================ -->
-<div id="section-classes" class="section-content hidden">
+<div id="section-classes" class="section-content hidden animate-enter">
   <div class="card">
     <div class="table-toolbar">
-      <input type="text" id="class-search" class="input input-sm" placeholder="Filter classes…" />
+      <input type="text" id="class-search" class="input input-sm" placeholder="Filter classes… (Press '/' to focus)" style="max-width: 320px;" />
     </div>
-    <table class="table" id="classes-table">
-      <thead>
-        <tr>
-          <th>Class</th><th>Module</th><th>Bases</th>
-          <th class="text-right">Methods</th><th class="text-right">Line</th><th>Subclasses</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for cls in result.all_classes %}
-        <tr class="class-row" data-search="{{ cls.name }} {{ cls.module }}">
-          <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=cls.path) }}" class="link-primary">{{ cls.name }}</a></td>
-          <td class="mono text-sm text-muted">{{ cls.module }}</td>
-          <td class="text-sm text-muted">{{ cls.bases | join(', ') or '—' }}</td>
-          <td class="text-right">{{ cls.method_count }}</td>
-          <td class="text-right text-muted">{{ cls.lineno }}</td>
-          <td class="text-sm text-muted">{{ cls.subclasses[:3] | join(', ') }}{% if cls.subclasses|length > 3 %}…{% endif %}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="empty-state">No classes found.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+      <table class="table" id="classes-table">
+        <thead>
+          <tr>
+            <th>Class</th><th>Module</th><th>Bases</th>
+            <th class="text-right">Methods</th><th class="text-right">Line</th><th>Subclasses</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cls in result.all_classes %}
+          <tr class="class-row" data-search="{{ cls.name }} {{ cls.module }}">
+            <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=cls.path) }}" class="link-primary">{{ cls.name }}</a></td>
+            <td class="mono text-sm text-muted">{{ cls.module }}</td>
+            <td class="text-sm text-muted">{{ cls.bases | join(', ') or '—' }}</td>
+            <td class="text-right mono text-sm">{{ cls.method_count }}</td>
+            <td class="text-right text-muted mono text-sm">{{ cls.lineno }}</td>
+            <td class="text-sm text-muted">{{ cls.subclasses[:3] | join(', ') }}{% if cls.subclasses|length > 3 %}…{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="empty-state">No classes found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
 <!-- ============================================================ -->
 <!-- FUNCTIONS -->
 <!-- ============================================================ -->
-<div id="section-functions" class="section-content hidden">
+<div id="section-functions" class="section-content hidden animate-enter">
   <div class="card">
-    <div class="table-toolbar toolbar-row">
-      <input type="text" id="fn-search" class="input input-sm" placeholder="Filter functions…" />
-      <label class="checkbox-label"><input type="checkbox" id="fn-methods-only" /> Methods only</label>
-      <label class="checkbox-label"><input type="checkbox" id="fn-complex-only" /> High complexity only (≥10)</label>
+    <div class="table-toolbar">
+      <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <input type="text" id="fn-search" class="input input-sm" placeholder="Filter functions… (Press '/' to focus)" style="max-width: 320px;" />
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem; color: var(--text-muted); cursor: pointer;">
+          <input type="checkbox" id="fn-methods-only" /> Methods only
+        </label>
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem; color: var(--text-muted); cursor: pointer;">
+          <input type="checkbox" id="fn-complex-only" /> High complexity only (≥10)
+        </label>
+      </div>
     </div>
-    <table class="table" id="functions-table">
-      <thead>
-        <tr>
-          <th>Function / Method</th><th>Module</th><th>Type</th>
-          <th class="text-right">Line</th><th class="text-right">Complexity</th>
-          <th>Calls</th><th>Callers</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for fn in result.all_functions %}
-        <tr class="fn-row" data-search="{{ fn.name }} {{ fn.module }}"
-            data-method="{{ '1' if fn.is_method else '0' }}"
-            data-complexity="{{ fn.complexity }}">
-          <td class="mono text-sm">
-            <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=fn.path) }}" class="link-primary">
-              {% if fn.is_method %}{{ fn.parent_class }}.{% endif %}{{ fn.name }}
-            </a>
-          </td>
-          <td class="mono text-sm text-muted">{{ fn.module }}</td>
-          <td class="text-sm">{{ 'method' if fn.is_method else 'function' }}</td>
-          <td class="text-right text-muted">{{ fn.lineno }}</td>
-          <td class="text-right">
-            <span class="complexity-badge complexity-{{ 'high' if fn.complexity >= 10 else 'med' if fn.complexity >= 5 else 'low' }}">
-              {{ fn.complexity }}
-            </span>
-          </td>
-          <td class="text-sm text-muted mono">{{ fn.calls[:3] | join(', ') }}{% if fn.calls|length > 3 %}…{% endif %}</td>
-          <td class="text-sm text-muted mono">{{ fn.callers[:2] | join(', ') }}{% if fn.callers|length > 2 %}…{% endif %}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="empty-state">No functions found.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+      <table class="table" id="functions-table">
+        <thead>
+          <tr>
+            <th>Function / Method</th><th>Module</th><th>Type</th>
+            <th class="text-right">Line</th><th class="text-right">Complexity</th>
+            <th>Calls</th><th>Callers</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fn in result.all_functions %}
+          <tr class="fn-row" data-search="{{ fn.name }} {{ fn.module }}"
+              data-method="{{ '1' if fn.is_method else '0' }}"
+              data-complexity="{{ fn.complexity }}">
+            <td class="mono text-sm">
+              <a href="{{ url_for('module_detail', analysis_id=record.id, module_path=fn.path) }}" class="link-primary">
+                {% if fn.is_method %}{{ fn.parent_class }}.{% endif %}{{ fn.name }}
+              </a>
+            </td>
+            <td class="mono text-sm text-muted">{{ fn.module }}</td>
+            <td class="text-sm"><span class="badge">{{ 'method' if fn.is_method else 'function' }}</span></td>
+            <td class="text-right text-muted mono text-sm">{{ fn.lineno }}</td>
+            <td class="text-right">
+              <span class="complexity-badge complexity-{{ 'high' if fn.complexity >= 10 else 'med' if fn.complexity >= 5 else 'low' }}">
+                {{ fn.complexity }}
+              </span>
+            </td>
+            <td class="text-sm text-muted mono">{{ fn.calls[:3] | join(', ') }}{% if fn.calls|length > 3 %}…{% endif %}</td>
+            <td class="text-sm text-muted mono">{{ fn.callers[:2] | join(', ') }}{% if fn.callers|length > 2 %}…{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty-state">No functions found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
 <!-- ============================================================ -->
 <!-- DEPENDENCIES -->
 <!-- ============================================================ -->
-<div id="section-dependencies" class="section-content hidden">
+<div id="section-dependencies" class="section-content hidden animate-enter">
   <div class="dep-two-col">
-
     <div class="card">
       <h2 class="card-title">External Libraries ({{ result.external_libraries | length }})</h2>
       {% if result.external_libraries %}
@@ -325,9 +507,9 @@
         <tbody>
           {% for lib in result.external_libraries %}
           <tr>
-            <td class="mono text-sm">{{ lib.name }}</td>
-            <td class="text-right">{{ lib.usage_count }}</td>
-            <td class="text-sm text-muted">{{ lib.used_by[:3] | join(', ') }}{% if lib.used_by|length > 3 %}…{% endif %}</td>
+            <td class="mono text-sm font-semibold">{{ lib.name }}</td>
+            <td class="text-right mono text-sm">{{ lib.usage_count }}</td>
+            <td class="text-sm text-muted mono">{{ lib.used_by[:3] | join(', ') }}{% if lib.used_by|length > 3 %}…{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -346,8 +528,8 @@
           {% if loop.index <= 20 %}
           <tr>
             <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.module }}</a></td>
-            <td class="text-right">{{ row.in_degree }}</td>
-            <td class="text-right">{{ row.out_degree }}</td>
+            <td class="text-right mono text-sm">{{ row.in_degree }}</td>
+            <td class="text-right mono text-sm text-muted">{{ row.out_degree }}</td>
             <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.coupling >= 10 else 'med' if row.coupling >= 5 else 'low' }}">{{ row.coupling }}</span></td>
           </tr>
           {% endif %}
@@ -355,146 +537,178 @@
         </tbody>
       </table>
     </div>
-
   </div>
 </div>
 
 <!-- ============================================================ -->
 <!-- METRICS -->
 <!-- ============================================================ -->
-<div id="section-metrics" class="section-content hidden">
+<div id="section-metrics" class="section-content hidden animate-enter">
   <div class="card">
     <div class="table-toolbar">
-      <input type="text" id="metrics-search" class="input input-sm" placeholder="Filter modules…" />
+      <input type="text" id="metrics-search" class="input input-sm" placeholder="Filter modules… (Press '/' to focus)" style="max-width: 320px;" />
     </div>
-    <table class="table" id="metrics-table">
-      <thead>
-        <tr>
-          <th>Module</th><th class="text-right">Lines</th><th class="text-right">Code</th>
-          <th class="text-right">Comments</th><th class="text-right">Blank</th>
-          <th class="text-right">Classes</th><th class="text-right">Fns</th>
-          <th class="text-right">Imports</th><th class="text-right">Complexity</th>
-          <th class="text-right">Max CC</th><th class="text-right">In</th><th class="text-right">Out</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in result.module_metrics %}
-        <tr class="metrics-row" data-search="{{ row.path }} {{ row.module }}">
-          <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.path }}</a></td>
-          <td class="text-right">{{ row.lines }}</td>
-          <td class="text-right">{{ row.code_lines }}</td>
-          <td class="text-right text-muted">{{ row.comment_lines }}</td>
-          <td class="text-right text-muted">{{ row.blank_lines }}</td>
-          <td class="text-right">{{ row.classes }}</td>
-          <td class="text-right">{{ row.functions + row.methods }}</td>
-          <td class="text-right">{{ row.imports }}</td>
-          <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.complexity >= 20 else 'med' if row.complexity >= 8 else 'low' }}">{{ row.complexity }}</span></td>
-          <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.max_fn_complexity >= 10 else 'med' if row.max_fn_complexity >= 5 else 'low' }}">{{ row.max_fn_complexity }}</span></td>
-          <td class="text-right">{{ row.in_degree }}</td>
-          <td class="text-right">{{ row.out_degree }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="12" class="empty-state">No data</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+      <table class="table" id="metrics-table">
+        <thead>
+          <tr>
+            <th>Module</th><th class="text-right">Lines</th><th class="text-right">Code</th>
+            <th class="text-right">Comments</th><th class="text-right">Blank</th>
+            <th class="text-right">Classes</th><th class="text-right">Fns</th>
+            <th class="text-right">Imports</th><th class="text-right">Complexity</th>
+            <th class="text-right">Max CC</th><th class="text-right">In</th><th class="text-right">Out</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.module_metrics %}
+          <tr class="metrics-row" data-search="{{ row.path }} {{ row.module }}">
+            <td class="mono text-sm"><a href="{{ url_for('module_detail', analysis_id=record.id, module_path=row.path) }}" class="link-primary">{{ row.path }}</a></td>
+            <td class="text-right mono text-sm">{{ row.lines }}</td>
+            <td class="text-right mono text-sm">{{ row.code_lines }}</td>
+            <td class="text-right text-muted mono text-sm">{{ row.comment_lines }}</td>
+            <td class="text-right text-muted mono text-sm">{{ row.blank_lines }}</td>
+            <td class="text-right mono text-sm">{{ row.classes }}</td>
+            <td class="text-right mono text-sm">{{ row.functions + row.methods }}</td>
+            <td class="text-right mono text-sm">{{ row.imports }}</td>
+            <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.complexity >= 20 else 'med' if row.complexity >= 8 else 'low' }}">{{ row.complexity }}</span></td>
+            <td class="text-right"><span class="complexity-badge complexity-{{ 'high' if row.max_fn_complexity >= 10 else 'med' if row.max_fn_complexity >= 5 else 'low' }}">{{ row.max_fn_complexity }}</span></td>
+            <td class="text-right mono text-sm">{{ row.in_degree }}</td>
+            <td class="text-right mono text-sm text-muted">{{ row.out_degree }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="12" class="empty-state">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
 <!-- ============================================================ -->
 <!-- ISSUES -->
 <!-- ============================================================ -->
-<div id="section-issues" class="section-content hidden">
+<div id="section-issues" class="section-content hidden animate-enter">
   {% set errors   = result.issues | selectattr('level','equalto','error')   | list %}
   {% set warnings = result.issues | selectattr('level','equalto','warning') | list %}
   {% set infos    = result.issues | selectattr('level','equalto','info')    | list %}
-  <div class="issue-filter-bar">
-    <button class="filter-btn active" data-filter="all">All <span class="badge">{{ result.issues|length }}</span></button>
-    <button class="filter-btn" data-filter="error">Errors <span class="badge badge-error">{{ errors|length }}</span></button>
-    <button class="filter-btn" data-filter="warning">Warnings <span class="badge badge-warning">{{ warnings|length }}</span></button>
-    <button class="filter-btn" data-filter="info">Info <span class="badge">{{ infos|length }}</span></button>
+  <div class="card">
+    <div class="table-toolbar">
+      <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;" id="issue-filter-buttons">
+        <button class="filter-btn active issue-filter-btn" data-filter="all">All <span class="badge">{{ result.issues|length }}</span></button>
+        <button class="filter-btn issue-filter-btn" data-filter="error">Errors <span class="badge badge-error">{{ errors|length }}</span></button>
+        <button class="filter-btn issue-filter-btn" data-filter="warning">Warnings <span class="badge badge-warning">{{ warnings|length }}</span></button>
+        <button class="filter-btn issue-filter-btn" data-filter="info">Info <span class="badge">{{ infos|length }}</span></button>
+      </div>
+    </div>
+    {% if result.issues %}
+    <div style="overflow-x: auto;">
+      <table class="table issues-table" id="issues-inline-table">
+        <thead>
+          <tr><th>Severity</th><th>Category</th><th>Issue</th><th>Detail</th><th>Location</th></tr>
+        </thead>
+        <tbody>
+          {% for issue in result.issues %}
+          <tr class="issue-row" data-level="{{ issue.level }}">
+            <td><span class="badge badge-{{ issue.level }}">{{ issue.level }}</span></td>
+            <td class="text-sm text-muted">{{ issue.category.replace('_',' ') }}</td>
+            <td style="font-weight: 500;">{{ issue.title }}</td>
+            <td class="text-sm text-muted">{{ issue.detail }}</td>
+            <td>
+              {% if issue.location %}
+                <code class="mono text-sm">{{ issue.location }}</code>
+                <button class="btn-copy" title="Copy location" onclick="copyTextToClipboard('{{ issue.location }}', 'Location', this)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty-state" style="padding: 2rem 0;">No issues detected.</p>
+    {% endif %}
   </div>
-  {% if result.issues %}
-  <div class="card" style="padding:0; overflow:hidden;">
-    <table class="table issues-table" id="issues-inline-table">
-      <thead>
-        <tr><th>Severity</th><th>Category</th><th>Issue</th><th>Detail</th><th>Location</th></tr>
-      </thead>
-      <tbody>
-        {% for issue in result.issues %}
-        <tr class="issue-row" data-level="{{ issue.level }}">
-          <td><span class="badge badge-{{ issue.level }}">{{ issue.level }}</span></td>
-          <td class="text-sm text-muted">{{ issue.category.replace('_',' ') }}</td>
-          <td class="issue-title-cell">{{ issue.title }}</td>
-          <td class="text-sm text-muted">{{ issue.detail }}</td>
-          <td>{% if issue.location %}<code class="mono text-sm">{{ issue.location }}</code>{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-    <div class="card"><p class="empty-state" style="padding:2rem 0">🎉 No issues detected.</p></div>
-  {% endif %}
 </div>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // ── Section tab switching ─────────────────────────────────────────────
+  // ── Section Tab Switching ─────────────────────────────────────────────
   function switchSection(name) {
-    document.querySelectorAll('.section-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.segmented-btn, .section-tab-btn').forEach(b => {
+      if (b.dataset.section === name) {
+        b.classList.add('active');
+        b.setAttribute('aria-selected', 'true');
+      } else {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      }
+    });
     document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
-    const btn = document.querySelector(`.section-tab-btn[data-section="${name}"]`);
-    if (btn) btn.classList.add('active');
     const sec = document.getElementById('section-' + name);
     if (sec) sec.classList.remove('hidden');
   }
 
-  document.querySelectorAll('.section-tab-btn').forEach(btn => {
+  document.querySelectorAll('.segmented-btn, .section-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => switchSection(btn.dataset.section));
   });
 
-  // ── Classes search ────────────────────────────────────────────────────
-  document.getElementById('class-search').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.class-row').forEach(r => {
-      r.style.display = r.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+  // ── Classes Search ───────────────────────────────────────────────────
+  const classSearch = document.getElementById('class-search');
+  if (classSearch) {
+    classSearch.addEventListener('input', function() {
+      const q = (this.value || '').toLowerCase().trim();
+      document.querySelectorAll('.class-row').forEach(r => {
+        const text = (r.dataset.search || '').toLowerCase();
+        r.style.display = (!q || text.includes(q)) ? '' : 'none';
+      });
     });
-  });
+  }
 
-  // ── Functions filter ──────────────────────────────────────────────────
+  // ── Functions Search & Filter ─────────────────────────────────────────
+  const fnSearch = document.getElementById('fn-search');
+  const fnMethOnly = document.getElementById('fn-methods-only');
+  const fnComplexOnly = document.getElementById('fn-complex-only');
+
   function applyFnFilter() {
-    const q         = document.getElementById('fn-search').value.toLowerCase();
-    const methOnly  = document.getElementById('fn-methods-only').checked;
-    const complexOnly = document.getElementById('fn-complex-only').checked;
+    const q = fnSearch ? (fnSearch.value || '').toLowerCase().trim() : '';
+    const methOnly = fnMethOnly ? fnMethOnly.checked : false;
+    const complexOnly = fnComplexOnly ? fnComplexOnly.checked : false;
     document.querySelectorAll('.fn-row').forEach(r => {
-      const matchQ  = r.dataset.search.toLowerCase().includes(q);
-      const matchM  = !methOnly  || r.dataset.method === '1';
-      const matchC  = !complexOnly || parseInt(r.dataset.complexity, 10) >= 10;
+      const text = (r.dataset.search || '').toLowerCase();
+      const matchQ = !q || text.includes(q);
+      const matchM = !methOnly || r.dataset.method === '1';
+      const matchC = !complexOnly || parseInt(r.dataset.complexity || '0', 10) >= 10;
       r.style.display = (matchQ && matchM && matchC) ? '' : 'none';
     });
   }
-  document.getElementById('fn-search').addEventListener('input', applyFnFilter);
-  document.getElementById('fn-methods-only').addEventListener('change', applyFnFilter);
-  document.getElementById('fn-complex-only').addEventListener('change', applyFnFilter);
 
-  // ── Metrics search ────────────────────────────────────────────────────
-  document.getElementById('metrics-search').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.metrics-row').forEach(r => {
-      r.style.display = r.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+  if (fnSearch) fnSearch.addEventListener('input', applyFnFilter);
+  if (fnMethOnly) fnMethOnly.addEventListener('change', applyFnFilter);
+  if (fnComplexOnly) fnComplexOnly.addEventListener('change', applyFnFilter);
+
+  // ── Metrics Search ───────────────────────────────────────────────────
+  const metricsSearch = document.getElementById('metrics-search');
+  if (metricsSearch) {
+    metricsSearch.addEventListener('input', function() {
+      const q = (this.value || '').toLowerCase().trim();
+      document.querySelectorAll('.metrics-row').forEach(r => {
+        const text = (r.dataset.search || '').toLowerCase();
+        r.style.display = (!q || text.includes(q)) ? '' : 'none';
+      });
     });
-  });
+  }
 
-  // ── Issues filter (inline) ────────────────────────────────────────────
-  document.querySelectorAll('.filter-btn').forEach(btn => {
+  // ── Scoped Issues Filter ─────────────────────────────────────────────
+  document.querySelectorAll('.issue-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.issue-filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const f = btn.dataset.filter;
-      document.querySelectorAll('.issue-row').forEach(r => {
+      document.querySelectorAll('#issues-inline-table .issue-row').forEach(r => {
         r.style.display = (f === 'all' || r.dataset.level === f) ? '' : 'none';
       });
     });
